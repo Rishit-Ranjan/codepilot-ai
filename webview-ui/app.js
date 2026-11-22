@@ -77,6 +77,8 @@
     menuModel.classList.add('hidden');
     menuSkills.classList.add('hidden');
     menuContext.classList.add('hidden');
+    activeSearchProvider = null;
+    contextMenuHeader.classList.add('hidden');
   }
 
   toastCloseBtn.addEventListener('click', () => {
@@ -345,6 +347,12 @@
     menuContext.classList.remove('hidden');
   }
 
+  function closeContextMenu() {
+    activeSearchProvider = null;
+    contextMenuHeader.classList.add('hidden');
+    menuContext.classList.add('hidden');
+  }
+
   function clearContextTrigger() {
     if (chatInput.value.endsWith('@')) {
       chatInput.value = chatInput.value.slice(0, -1);
@@ -358,7 +366,7 @@
     if (menuContext.classList.contains('hidden')) {
       openContextMenu();
     } else {
-      menuContext.classList.add('hidden');
+      closeContextMenu();
     }
   });
 
@@ -405,7 +413,7 @@
           const prov = providers.find((x) => x.id === pid);
           clearContextTrigger();
           addAttachment({ provider: pid, label: prov ? prov.label : pid });
-          menuContext.classList.add('hidden');
+          closeContextMenu();
         }
       });
     });
@@ -497,6 +505,8 @@
     const val = chatInput.value;
     if (val.endsWith('@')) {
       openContextMenu();
+    } else if (!activeSearchProvider && !menuContext.classList.contains('hidden')) {
+      closeContextMenu();
     }
   });
 
@@ -1565,7 +1575,7 @@
               itemId: btn.dataset.pickItem,
               label: btn.dataset.pickLabel
             });
-            menuContext.classList.add('hidden');
+            closeContextMenu();
           });
         });
         break;

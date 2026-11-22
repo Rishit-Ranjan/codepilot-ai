@@ -561,8 +561,14 @@
     const { mode, config, sessions } = appState;
     const profile = config.profile;
 
-    const modeLabels = { chat: 'Chat', plan: 'Plan', agent: 'Agent' };
-    document.getElementById('label-mode').textContent = modeLabels[mode] || 'Chat';
+    const modeControls = {
+      chat: { icon: '&#128172;', label: 'Chat' },
+      plan: { icon: '&#128221;', label: 'Plan' },
+      agent: { icon: '&#10024;', label: 'Agent' }
+    };
+    const selectedMode = modeControls[mode] || modeControls.chat;
+    document.getElementById('label-mode').innerHTML =
+      `<span aria-hidden="true">${selectedMode.icon}</span> ${selectedMode.label}`;
 
     // Active chat model
     const activeChatModel =

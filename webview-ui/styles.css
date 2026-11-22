@@ -209,6 +209,7 @@ textarea:focus-visible,
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08);
+  container-type: inline-size;
 }
 
 .cp-composer-card:focus-within {
@@ -568,6 +569,7 @@ textarea:focus-visible,
   display: flex;
   flex-direction: column;
   gap: 8px;
+  container-type: inline-size;
 }
 
 .cp-msg {
@@ -580,10 +582,16 @@ textarea:focus-visible,
 
 .cp-msg.user {
   align-self: flex-end;
-  width: fit-content;
-  max-width: 88%;
-  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
-  background: var(--surface-elevated);
+  box-sizing: border-box;
+  width: 88%;
+  max-width: 720px;
+  /* Keep the existing border and background rules. */
+}
+
+@container (max-width: 360px) {
+  .cp-msg.user {
+    width: 100%;
+  }
 }
 
 .cp-msg.assistant { border-left: 2px solid var(--accent); }
@@ -1009,4 +1017,19 @@ textarea:focus-visible,
   .cp-textarea { min-height: 38px; }
   .cp-modal { max-height: calc(100vh - 12px); }
   .cp-modal-backdrop { padding: 6px; }
+}
+
+@container (max-width: 440px) {
+  .cp-composer-bottom {
+    align-items: stretch;
+  }
+
+  .cp-composer-left,
+  .cp-composer-right {
+    flex: 1 1 100%;
+  }
+
+  .cp-composer-right {
+    justify-content: space-between;
+  }
 }

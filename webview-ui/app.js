@@ -32,6 +32,8 @@
   const viewChat = document.getElementById('view-chat');
   const viewSettings = document.getElementById('view-settings');
   const toastEl = document.getElementById('toast');
+  const toastMessageEl = document.getElementById('toast-message');
+  const toastCloseBtn = document.getElementById('toast-close');
   const historyDrawer = document.getElementById('history-drawer');
   const btnHistory = document.getElementById('btn-history');
   const historyList = document.getElementById('history-list');
@@ -75,12 +77,20 @@
     menuContext.classList.add('hidden');
   }
 
+  toastCloseBtn.addEventListener('click', () => {
+    if (toastTimeout) {
+      clearTimeout(toastTimeout);
+      toastTimeout = null;
+    }
+    toastEl.classList.add('hidden');
+  });
+
   function showToast(message, persistent = false) {
     if (toastTimeout) {
       clearTimeout(toastTimeout);
       toastTimeout = null;
     }
-    toastEl.textContent = message;
+    toastMessageEl.textContent = message;
     toastEl.classList.remove('hidden');
     if (!persistent) {
       toastTimeout = setTimeout(() => {

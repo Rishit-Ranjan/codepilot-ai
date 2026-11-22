@@ -172,17 +172,24 @@ textarea:focus-visible,
 }
 
 .cp-toast {
-  flex-shrink: 0;
-  margin: 7px 8px 0;
-  padding: 7px 9px;
-  border-radius: var(--control-radius);
-  background: var(--warn-bg);
-  border: 1px solid var(--warn-border);
-  color: var(--fg);
-  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
-/* Composer */
+.cp-toast-close {
+  flex-shrink: 0;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
 .cp-composer-card {
   order: 2;
   display: flex;

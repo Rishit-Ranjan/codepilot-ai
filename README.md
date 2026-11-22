@@ -239,4 +239,4 @@ npx vsce package
 
 ## License
 
-Add a license file before distributing or publishing the extension. VS Code Marketplace listings should include a license file and matching package manifest metadata.
+This project is licensed under the [Apache License 2.0](./LICENSE).

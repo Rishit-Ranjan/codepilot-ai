@@ -31,6 +31,8 @@
   const tabChat = document.getElementById('tab-chat');
   const viewChat = document.getElementById('view-chat');
   const viewSettings = document.getElementById('view-settings');
+  const settingsSidebar = viewSettings.querySelector('.cp-sidebar');
+  const settingsSidebarToggle = document.getElementById('btn-settings-sidebar-toggle');
   const toastEl = document.getElementById('toast');
   const toastMessageEl = document.getElementById('toast-message');
   const toastCloseBtn = document.getElementById('toast-close');
@@ -127,6 +129,39 @@
     switchMainView('settings');
   });
   document.getElementById('btn-settings-back').addEventListener('click', () => switchMainView('chat'));
+  let sidebarPreference = vscode.getState()?.settingsSidebarCollapsed;
+  const narrowSidebarQuery = window.matchMedia('(max-width: 420px)');
+
+  function setSettingsSidebarCollapsed(collapsed, remember = false) {
+    settingsSidebar.classList.toggle('collapsed', collapsed);
+    settingsSidebarToggle.setAttribute('aria-expanded', String(!collapsed));
+    settingsSidebarToggle.setAttribute('aria-label', collapsed ? 'Expand navigation' : 'Collapse navigation');
+    settingsSidebarToggle.title = collapsed ? 'Expand navigation' : 'Collapse navigation';
+    settingsSidebarToggle.dataset.tooltip = collapsed ? 'Expand navigation' : 'Collapse navigation';
+    settingsSidebarToggle.querySelector('.cp-nav-icon-text').innerHTML = collapsed ? '&rsaquo;' : '&lsaquo;';
+    settingsSidebarToggle.querySelector('.cp-nav-label').textContent = collapsed ? 'Expand' : 'Collapse';
+    if (remember) {
+      sidebarPreference = collapsed;
+      vscode.setState({ ...vscode.getState(), settingsSidebarCollapsed: collapsed });
+    }
+  }
+
+  function applySidebarBreakpoint() {
+    if (narrowSidebarQuery.matches) {
+      setSettingsSidebarCollapsed(true);
+    } else if (typeof sidebarPreference === 'boolean') {
+      setSettingsSidebarCollapsed(sidebarPreference);
+    } else {
+      setSettingsSidebarCollapsed(false);
+    }
+  }
+
+  settingsSidebarToggle.addEventListener('click', () => {
+    setSettingsSidebarCollapsed(!settingsSidebar.classList.contains('collapsed'), true);
+  });
+  narrowSidebarQuery.addEventListener('change', applySidebarBreakpoint);
+  applySidebarBreakpoint();
+
   document.getElementById('btn-new-session').addEventListener('click', () => {
     vscode.postMessage({ type: 'newSession' });
     switchMainView('chat');

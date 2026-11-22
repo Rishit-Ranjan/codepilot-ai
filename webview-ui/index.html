@@ -199,18 +199,25 @@
     <main id="view-settings" class="cp-view">
       <div class="cp-settings-layout">
         <aside class="cp-sidebar">
-          <button id="btn-settings-back" class="cp-nav-item">&larr; Back</button>
+          <button id="btn-settings-sidebar-toggle" class="cp-nav-item cp-sidebar-toggle" type="button" title="Collapse navigation" data-tooltip="Collapse navigation" aria-label="Collapse navigation" aria-expanded="true">
+            <span class="cp-nav-icon-text" aria-hidden="true">&lsaquo;</span>
+            <span class="cp-nav-label">Collapse</span>
+          </button>
+          <button id="btn-settings-back" class="cp-nav-item" data-tooltip="Back" title="Back">
+            <span class="cp-nav-icon-text" aria-hidden="true">&larr;</span>
+            <span class="cp-nav-label">Back</span>
+          </button>
           <div class="cp-nav-divider"></div>
-          <button class="cp-nav-item active" data-tab="models">&#11042; Models</button>
-          <button class="cp-nav-item" data-tab="configured-models">◆ Configured Models</button>
-          <button class="cp-nav-item" data-tab="rules">&#9998; Rules</button>
-          <button class="cp-nav-item" data-tab="skills"><svg class="cp-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z" /></svg>Skills</button>
-          <button class="cp-nav-item" data-tab="tools">&#128295; Tools</button>
+          <button class="cp-nav-item active" data-tab="models" data-tooltip="Models" title="Models"><span class="cp-nav-icon-text" aria-hidden="true">&#11042;</span><span class="cp-nav-label">Models</span></button>
+          <button class="cp-nav-item" data-tab="configured-models" data-tooltip="Configured Models" title="Configured Models"><span class="cp-nav-icon-text" aria-hidden="true">◆</span><span class="cp-nav-label">Configured Models</span></button>
+          <button class="cp-nav-item" data-tab="rules" data-tooltip="Rules" title="Rules"><span class="cp-nav-icon-text" aria-hidden="true">&#9998;</span><span class="cp-nav-label">Rules</span></button>
+          <button class="cp-nav-item" data-tab="skills" data-tooltip="Skills" title="Skills"><svg class="cp-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z" /></svg><span class="cp-nav-label">Skills</span></button>
+          <button class="cp-nav-item" data-tab="tools" data-tooltip="Tools" title="Tools"><span class="cp-nav-icon-text" aria-hidden="true">&#128295;</span><span class="cp-nav-label">Tools</span></button>
           <div class="cp-nav-divider"></div>
-          <button class="cp-nav-item" data-tab="indexing">&#128451; Indexing</button>
+          <button class="cp-nav-item" data-tab="indexing" data-tooltip="Indexing" title="Indexing"><span class="cp-nav-icon-text" aria-hidden="true">&#128451;</span><span class="cp-nav-label">Indexing</span></button>
           <div class="cp-nav-spacer"></div>
-          <button class="cp-nav-item" data-tab="settings">&#9881; Settings</button>
-          <button class="cp-nav-item" data-tab="help">&#10067; Help</button>
+          <button class="cp-nav-item" data-tab="settings" data-tooltip="Settings" title="Settings"><span class="cp-nav-icon-text" aria-hidden="true">&#9881;</span><span class="cp-nav-label">Settings</span></button>
+          <button class="cp-nav-item" data-tab="help" data-tooltip="Help" title="Help"><span class="cp-nav-icon-text" aria-hidden="true">&#10067;</span><span class="cp-nav-label">Help</span></button>
         </aside>
 
         <section id="settings-content" class="cp-settings-main"></section>

@@ -40,7 +40,8 @@
         {
           "type": "webview",
           "id": "codepilot.chatView",
-          "name": "CodePilot AI"
+          "name": "CodePilot AI",
+          "icon": "media/codepilot-icon.svg"
         }
       ]
     },

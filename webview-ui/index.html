@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'none'; img-src {{cspSource}}; style-src {{cspSource}} 'unsafe-inline'; script-src 'nonce-{{nonce}}';"
+  />
+  <title>CodePilot AI</title>
+  <link rel="stylesheet" href="{{stylesUri}}" />
+</head>
+<body>
+  <div id="app" class="cp-shell">
+    <!-- Top Header Bar -->
+    <header class="cp-topbar">
+      <div class="cp-tabs" role="tablist">
+        <button id="tab-chat" class="cp-tab active" role="tab" aria-selected="true">Chat</button>
+      </div>
+      <div class="cp-topbar-actions">
+        <button id="btn-new-session" class="cp-icon-btn" title="New Chat Session" aria-label="New Chat Session">
+          <svg class="cp-topbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+        <button id="btn-history" class="cp-icon-btn" title="Chat History" aria-label="Chat History">
+          <svg class="cp-topbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7v5l3 2" />
+          </svg>
+        </button>
+        <button id="btn-open-settings" class="cp-icon-btn" title="General Settings" aria-label="General Settings">
+          <img class="cp-settings-icon" src="{{settingsIconUri}}" alt="" aria-hidden="true" />
+        </button>
+      </div>
+    </header>
+
+    <!-- Error / Status Toast -->
+    <div id="toast" class="cp-toast hidden" role="alert"></div>
+
+    <!-- History Drawer -->
+    <section id="history-drawer" class="cp-drawer hidden">
+      <div class="cp-drawer-header">
+        <span>Session History</span>
+        <button id="btn-close-history" class="cp-icon-btn" title="Close History">&times;</button>
+      </div>
+      <div id="history-list" class="cp-drawer-body"></div>
+    </section>
+
+    <!-- CHAT VIEW -->
+    <main id="view-chat" class="cp-view active">
+      <!-- Composer Card -->
+      <div class="cp-composer-card">
+        <div class="cp-composer-top">
+          <div class="cp-quick-nav">
+            <button class="cp-mini-btn" data-nav="rules" title="Rules">&#9998; <span>Rules</span></button>
+            <button class="cp-mini-btn" data-nav="skills" title="Skills">&#9889; <span>Skills</span></button>
+            <button class="cp-mini-btn" data-nav="tools" title="Built-in Tools">&#128295; <span>Tools</span></button>
+            <button class="cp-mini-btn" data-nav="models" title="Models">&#11042; <span>Models</span></button>
+          </div>
+        </div>
+
+        <!-- Attached Context Chips -->
+        <div id="context-chips" class="cp-chips hidden"></div>
+
+        <!-- Input Area -->
+        <div class="cp-input-wrap">
+          <textarea
+            id="chat-input"
+            class="cp-textarea"
+            rows="3"
+            placeholder="Ask anything, '@' to add context"
+            aria-label="Ask CodePilot AI"
+          ></textarea>
+
+          <!-- @ Context Popover -->
+          <div id="menu-context" class="cp-popover cp-context-popover hidden">
+            <div id="context-menu-header" class="cp-popover-header hidden">
+              <button id="btn-context-back" class="cp-link-btn">&larr; Back</button>
+              <input id="context-search-input" class="cp-search-input" type="text" placeholder="Type to search..." />
+            </div>
+            <div id="context-menu-list" class="cp-popover-list"></div>
+          </div>
+        </div>
+
+        <!-- Bottom Composer Toolbar -->
+        <div class="cp-composer-bottom">
+          <div class="cp-composer-left">
+            <!-- Mode Picker -->
+            <div class="cp-dropdown-wrap">
+              <button id="btn-mode-picker" class="cp-pill-btn" title="Select Mode (Ctrl+.)">
+                <span id="label-mode">Chat</span> &#9662;
+              </button>
+              <div id="menu-mode-picker" class="cp-popover hidden">
+                <button class="cp-menu-item" data-mode="chat">
+                  <span>&#128172; Chat</span>
+                  <span class="cp-kbd">Ctrl+L</span>
+                </button>
+                <button class="cp-menu-item" data-mode="plan">
+                  <span>&#128221; Plan</span>
+                  <span class="cp-muted">Read-only plan</span>
+                </button>
+                <button class="cp-menu-item" data-mode="agent">
+                  <span>&#10024; Agent</span>
+                  <span class="cp-muted">Uses tools</span>
+                </button>
+                <div class="cp-popover-footer">Ctrl+. for next mode</div>
+              </div>
+            </div>
+
+            <!-- Model Picker -->
+            <div class="cp-dropdown-wrap">
+              <button id="btn-model-picker" class="cp-pill-btn" title="Select Model (Ctrl+')">
+                <span id="label-model">Select Model</span> &#9662;
+              </button>
+              <div id="menu-model-picker" class="cp-popover hidden">
+                <div class="cp-popover-title">
+                  <span>Models</span>
+                  <button id="btn-models-gear" class="cp-icon-btn" title="Configure Models">&#9881;</button>
+                </div>
+                <div id="model-picker-list" class="cp-popover-list"></div>
+                <button id="btn-add-chat-model" class="cp-menu-item cp-add-row">+ Add Chat model</button>
+                <div class="cp-popover-footer">Ctrl+' to toggle model</div>
+              </div>
+            </div>
+
+            <!-- @ Context Button -->
+            <button id="btn-at-context" class="cp-icon-btn" title="Add Context (@)">@</button>
+            <!-- Skill Picker -->
+            <div class="cp-dropdown-wrap">
+              <button id="btn-skills-picker" class="cp-pill-btn" title="Activate a Skill">&#9889; Skills</button>
+              <div id="menu-skills-picker" class="cp-popover hidden">
+                <div class="cp-popover-title">
+                  <span>Skills</span>
+                  <button id="btn-skills-settings" class="cp-icon-btn" title="Manage Skills">&#9881;</button>
+                </div>
+                <div id="skill-picker-list" class="cp-popover-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="cp-composer-right">
+            <button id="btn-send-active-file" class="cp-ghost-btn" title="Attach Active File">
+              <span class="cp-kbd">Ctrl&#9166;</span> Active file
+            </button>
+            <button id="btn-send" class="cp-primary-btn" title="Send Message (Enter)">&#8629; Enter</button>
+            <button id="btn-stop" class="cp-danger-btn hidden" title="Stop Generation">&#9632; Stop</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty / Last Session Restore -->
+      <div id="empty-state" class="cp-empty-state">
+        <button id="btn-last-session" class="cp-link-btn hidden">&larr; Last Session</button>
+        <div class="cp-empty-card">
+          <h3>CodePilot AI</h3>
+          <p>Private, local-first coding assistant. API keys stay encrypted in VS Code SecretStorage.</p>
+          <div class="cp-shortcut-grid">
+            <span><kbd>Ctrl+L</kbd> Focus Chat</span>
+            <span><kbd>Ctrl+I</kbd> Inline Edit</span>
+            <span><kbd>Ctrl+.</kbd> Cycle Mode</span>
+            <span><kbd>Ctrl+'</kbd> Toggle Model</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat Message Stream -->
+      <div id="chat-messages" class="cp-messages"></div>
+    </main>
+
+    <!-- SETTINGS / CONFIG VIEW -->
+    <main id="view-settings" class="cp-view">
+      <div class="cp-settings-layout">
+        <aside class="cp-sidebar">
+          <button id="btn-settings-back" class="cp-nav-item">&larr; Back</button>
+          <div class="cp-nav-divider"></div>
+          <button class="cp-nav-item active" data-tab="models">&#11042; Models</button>
+          <button class="cp-nav-item" data-tab="configured-models">◆ Configured Models</button>
+          <button class="cp-nav-item" data-tab="rules">&#9998; Rules</button>
+          <button class="cp-nav-item" data-tab="skills"><svg class="cp-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z" /></svg>Skills</button>
+          <button class="cp-nav-item" data-tab="tools">&#128295; Tools</button>
+          <div class="cp-nav-divider"></div>
+          <button class="cp-nav-item" data-tab="indexing">&#128451; Indexing</button>
+          <div class="cp-nav-spacer"></div>
+          <button class="cp-nav-item" data-tab="settings">&#9881; Settings</button>
+          <button class="cp-nav-item" data-tab="help">&#10067; Help</button>
+        </aside>
+
+        <section id="settings-content" class="cp-settings-main"></section>
+      </div>
+    </main>
+
+    <!-- ADD / EDIT MODEL MODAL -->
+    <div id="modal-model" class="cp-modal-backdrop hidden" role="dialog" aria-modal="true">
+      <div class="cp-modal">
+        <div class="cp-modal-header">
+          <h3 id="modal-model-title">Add Model</h3>
+          <button id="btn-close-model-modal" class="cp-icon-btn">&times;</button>
+        </div>
+        <form id="form-model" class="cp-form">
+          <input type="hidden" id="field-model-id" />
+          <label class="cp-label">
+            Display Name
+            <input id="field-model-title" class="cp-input" type="text" placeholder="e.g., GPT-4o or Claude 3.7 Sonnet" required />
+          </label>
+          <label class="cp-label">
+            Provider
+            <select id="field-model-provider" class="cp-select">
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="gemini">Google Gemini</option>
+              <option value="openrouter">OpenRouter</option>
+              <option value="voyage">Voyage AI</option>
+              <option value="cohere">Cohere</option>
+              <option value="jina">Jina AI</option>
+              <option value="ollama">Ollama (Local)</option>
+              <option value="custom">Custom OpenAI-Compatible</option>
+            </select>
+          </label>
+          <label class="cp-label">
+            Model ID
+            <input id="field-model-slug" class="cp-input" type="text" placeholder="e.g., gpt-4o, claude-3-7-sonnet-latest, llama3.1:8b" required />
+          </label>
+          <label class="cp-label">
+            API Base URL
+            <input id="field-model-base" class="cp-input" type="text" placeholder="Auto-filled from provider" />
+          </label>
+          <div class="cp-label">
+            <span>API Key <span class="cp-badge-secure">Encrypted via SecretStorage</span></span>
+            <div class="cp-secret-row">
+              <input id="field-model-apikey" class="cp-input" type="password" placeholder="Leave blank to keep existing key" autocomplete="off" />
+              <button type="button" id="btn-toggle-key-vis" class="cp-ghost-btn">Show</button>
+            </div>
+            <small id="secret-status-hint" class="cp-muted">Stored privately in OS keychain — never saved in plain text config.</small>
+          </div>
+          <details class="cp-card cp-generation-options" open>
+            <summary>Generation options (optional)</summary>
+            <p class="cp-muted">Blank values use app or provider defaults. Context length, Top K, and Repeat penalty are Ollama-only options.</p>
+            <div class="cp-generation-grid">
+              <label class="cp-label">
+                Temperature
+                <input id="field-model-temperature" class="cp-input" type="number" min="0" max="2" step="0.1" placeholder="Default" />
+              </label>
+              <label class="cp-label">
+                Max output tokens
+                <input id="field-model-max-tokens" class="cp-input" type="number" min="1" max="262144" step="1" placeholder="Default" />
+              </label>
+              <label class="cp-label">
+                Top P
+                <input id="field-model-top-p" class="cp-input" type="number" min="0" max="1" step="0.05" placeholder="Provider default" />
+              </label>
+              <div id="field-penalty-options" class="cp-generation-grid">
+                <label class="cp-label">
+                  Frequency penalty
+                  <input id="field-model-frequency-penalty" class="cp-input" type="number" min="-2" max="2" step="0.1" placeholder="Provider default" />
+                </label>
+                <label class="cp-label">
+                  Presence penalty
+                  <input id="field-model-presence-penalty" class="cp-input" type="number" min="-2" max="2" step="0.1" placeholder="Provider default" />
+                </label>
+              </div>
+              <div id="field-ollama-options" class="cp-generation-grid hidden">
+                <label class="cp-label">
+                  Context length (tokens)
+                  <input id="field-model-context-length" class="cp-input" type="number" min="512" max="262144" step="512" placeholder="Model default" />
+                </label>
+                <label class="cp-label">
+                  Top K
+                  <input id="field-model-top-k" class="cp-input" type="number" min="1" max="1000" step="1" placeholder="Ollama default" />
+                </label>
+                <label class="cp-label">
+                  Repeat penalty
+                  <input id="field-model-repeat-penalty" class="cp-input" type="number" min="0.1" max="2" step="0.05" placeholder="Ollama default" />
+                </label>
+              </div>
+            </div>
+            <p class="cp-muted">Anthropic accepts Temperature or Top P, not both; Top P takes precedence. Ollama context length must fit the model and available memory.</p>
+          </details>
+          <div class="cp-label">
+            <span>Model Roles</span>
+            <div class="cp-checkbox-grid">
+              <label><input type="checkbox" name="role" value="chat" checked /> Chat</label>
+              <label><input type="checkbox" name="role" value="autocomplete" /> Autocomplete</label>
+              <label><input type="checkbox" name="role" value="edit" /> Edit</label>
+              <label><input type="checkbox" name="role" value="apply" /> Apply</label>
+              <label><input type="checkbox" name="role" value="embed" /> Embed</label>
+              <label><input type="checkbox" name="role" value="rerank" /> Rerank</label>
+            </div>
+          </div>
+          <div class="cp-modal-actions">
+            <button type="button" id="btn-cancel-model" class="cp-ghost-btn">Cancel</button>
+            <button type="submit" class="cp-primary-btn">Save Model</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ADD DOCUMENTATION MODAL -->
+    <div id="modal-doc" class="cp-modal-backdrop hidden" role="dialog" aria-modal="true">
+      <div class="cp-modal">
+        <div class="cp-modal-header">
+          <h3>Add Documentation Source</h3>
+          <button id="btn-close-doc-modal" class="cp-icon-btn">&times;</button>
+        </div>
+        <form id="form-doc" class="cp-form">
+          <label class="cp-label">
+            Title
+            <input id="field-doc-title" class="cp-input" type="text" placeholder="e.g., VS Code API Docs" required />
+          </label>
+          <label class="cp-label">
+            URL or Local File Path
+            <input id="field-doc-url" class="cp-input" type="text" placeholder="https://code.visualstudio.com/api or /path/to/docs.md" required />
+          </label>
+          <div class="cp-modal-actions">
+            <button type="button" id="btn-cancel-doc" class="cp-ghost-btn">Cancel</button>
+            <button type="submit" class="cp-primary-btn">Index Docs</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <script nonce="{{nonce}}" src="{{scriptUri}}"></script>
+</body>
+</html>

@@ -1,0 +1,118 @@
+{
+  "name": "codepilot-ai",
+  "type": "module",
+  "displayName": "CodePilot AI",
+  "description": "Privacy-first AI coding assistant for VS Code with encrypted SecretStorage API keys, local codebase indexing, multi-role models, Chat/Plan/Agent modes, and inline autocomplete.",
+  "version": "1.0.0",
+  "publisher": "codepilot-ai",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "ai",
+    "assistant",
+    "codepilot",
+    "autocomplete",
+    "codebase-indexing",
+    "agent"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./src/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codepilot-ai-sidebar",
+          "title": "CodePilot AI",
+          "icon": "media/codepilot-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "codepilot-ai-sidebar": [
+        {
+          "type": "webview",
+          "id": "codepilot.chatView",
+          "name": "CodePilot AI"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "codepilot.focusChat",
+        "title": "CodePilot AI: Focus Chat / Send Selection"
+      },
+      {
+        "command": "codepilot.inlineEdit",
+        "title": "CodePilot AI: Inline Edit Selection"
+      },
+      {
+        "command": "codepilot.newSession",
+        "title": "CodePilot AI: New Chat Session"
+      },
+      {
+        "command": "codepilot.nextMode",
+        "title": "CodePilot AI: Cycle Mode (Chat / Plan / Agent)"
+      },
+      {
+        "command": "codepilot.toggleModel",
+        "title": "CodePilot AI: Toggle Chat Model"
+      },
+      {
+        "command": "codepilot.reindexCodebase",
+        "title": "CodePilot AI: Re-index Codebase"
+      },
+      {
+        "command": "codepilot.openSettings",
+        "title": "CodePilot AI: Open Settings"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "codepilot.focusChat",
+        "key": "ctrl+l",
+        "mac": "cmd+l"
+      },
+      {
+        "command": "codepilot.inlineEdit",
+        "key": "ctrl+i",
+        "mac": "cmd+i",
+        "when": "editorTextFocus && editorHasSelection"
+      },
+      {
+        "command": "codepilot.nextMode",
+        "key": "ctrl+.",
+        "mac": "cmd+."
+      },
+      {
+        "command": "codepilot.toggleModel",
+        "key": "ctrl+'",
+        "mac": "cmd+'"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "codepilot.focusChat",
+          "group": "1_codepilot@1",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "codepilot.inlineEdit",
+          "group": "1_codepilot@2",
+          "when": "editorHasSelection"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "test": "node test/runTests.js"
+  }
+}

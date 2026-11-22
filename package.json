@@ -21,6 +21,7 @@
     "codebase-indexing",
     "agent"
   ],
+  "icon": "media/codepilot-icon.png",
   "activationEvents": [
     "onStartupFinished"
   ],

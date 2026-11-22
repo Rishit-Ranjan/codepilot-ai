@@ -1,6 +1,6 @@
-# CodePilot AI
+# CodePilot Coder
 
-CodePilot AI is a privacy-first AI coding assistant for Visual Studio Code. It combines workspace-aware chat, planning, agent tools, inline editing, and code autocomplete in a single sidebar.
+CodePilot Coder is a privacy-first AI coding assistant for Visual Studio Code. It combines workspace-aware chat, planning, agent tools, inline editing, and code autocomplete in a single sidebar.
 
 Built with JavaScript and the VS Code Extension API, it supports local Ollama models and popular cloud providers while keeping API keys in VS Code `SecretStorage`.
 
@@ -64,7 +64,7 @@ Open the project folder in VS Code, then press `F5` to launch an Extension Devel
 
 ## Quick Start
 
-1. Open the **CodePilot AI** icon in the Activity Bar.
+1. Open the **CodePilot Coder** icon in the Activity Bar.
 2. Select a mode: **Chat**, **Plan**, or **Agent**.
 3. Select or configure a chat model.
 4. Enter a prompt.
@@ -76,7 +76,7 @@ To attach the active editor file without opening the context menu, use **Active 
 
 ## Configure Models
 
-Open **Models** in the sidebar settings. CodePilot AI supports separate model roles:
+Open **Models** in the sidebar settings. CodePilot Coder supports separate model roles:
 
 | Role         | Purpose                                           |
 | ------------ | ------------------------------------------------- |
@@ -137,7 +137,7 @@ Use Plan for implementation planning and analysis. This mode is intended to avoi
 
 ### Agent
 
-Use Agent for tasks that may need workspace tools. Tool permissions determine whether CodePilot AI runs actions automatically, asks for approval, or excludes a tool.
+Use Agent for tasks that may need workspace tools. Tool permissions determine whether CodePilot Coder runs actions automatically, asks for approval, or excludes a tool.
 
 ## Context and Search
 
@@ -202,13 +202,13 @@ Review tool calls and use ask-first permissions when working in unfamiliar repos
 
 Additional commands are available from the VS Code Command Palette:
 
-- `CodePilot AI: New Chat Session`
-- `CodePilot AI: Re-index Codebase`
-- `CodePilot AI: Open Settings`
+- `CodePilot Coder: New Chat Session`
+- `CodePilot Coder: Re-index Codebase`
+- `CodePilot Coder: Open Settings`
 
 ## Privacy and Storage
 
-CodePilot AI does not require API keys to be placed in source files or workspace settings.
+CodePilot Coder does not require API keys to be placed in source files or workspace settings.
 
 - API keys are stored in VS Code `SecretStorage`
 - Chat sessions are stored through VS Code workspace state

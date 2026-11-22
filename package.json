@@ -114,5 +114,10 @@
   },
   "scripts": {
     "test": "node test/runTests.js"
+  },
+
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rishit-Ranjan/codepilot-ai.git"
   }
 }

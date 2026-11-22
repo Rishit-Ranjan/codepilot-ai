@@ -1,5 +1,5 @@
 {
-  "name": "codepilot-ai",
+  "name": "codepilot-ai-assistant",
   "type": "module",
   "displayName": "CodePilot AI",
   "description": "Privacy-first AI coding assistant for VS Code with encrypted SecretStorage API keys, local codebase indexing, multi-role models, Chat/Plan/Agent modes, and inline autocomplete.",

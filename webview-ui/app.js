@@ -808,8 +808,8 @@
               </div>
               <button class="cp-icon-btn" data-add-role="${role}" title="Add ${label} Model">+</button>
             </div>
-            <div style="margin-top:8px; display:flex; gap:6px; align-items:center;">
-              <select class="cp-select" style="flex:1; min-width:0;" data-role-select="${role}">
+            <div class="cp-model-select-row">
+              <select class="cp-select" data-role-select="${role}">
                 <option value="">-- Setup ${label} model --</option>
                 ${candidates
                   .map(

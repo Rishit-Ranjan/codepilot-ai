@@ -1305,6 +1305,43 @@
   }
 
   // Model Modal
+  let modelCatalogRequestId = 0;
+  let modelModalProvider = 'openai';
+  let modelModalExisting = null;
+  let modelModalDefaultRole = 'chat';
+  const modelCatalogSelect = document.getElementById('model-catalog-select');
+  const modelCatalogStatus = document.getElementById('model-catalog-status');
+  const loadModelsButton = document.getElementById('btn-load-models');
+
+  function invalidateModelCatalog() {
+    modelCatalogRequestId++;
+    modelCatalogSelect.innerHTML = '';
+    modelCatalogSelect.classList.add('hidden');
+    loadModelsButton.disabled = false;
+    loadModelsButton.textContent = 'Load Models';
+  }
+
+  function updateModelCatalogHint(provider) {
+    modelCatalogStatus.textContent = provider === 'anthropic'
+      ? 'Load available Claude models to auto-select the newest active model when this field is empty. You can also choose another model or enter any model ID.'
+      : 'Load the provider catalog to choose a model, or enter any model ID manually.';
+  }
+
+  function updateModelIdPlaceholder(provider) {
+    const slugInput = document.getElementById('field-model-slug');
+    if (provider === 'voyage') {
+      slugInput.placeholder = 'e.g., rerank-2.5 or rerank-2';
+    } else if (provider === 'cohere') {
+      slugInput.placeholder = 'e.g., rerank-v3.5';
+    } else if (provider === 'jina') {
+      slugInput.placeholder = 'e.g., jina-reranker-v3';
+    } else if (provider === 'anthropic') {
+      slugInput.placeholder = 'Auto-select a Claude model or enter its model ID';
+    } else {
+      slugInput.placeholder = 'Enter a model ID';
+    }
+  }
+
   function updateModelOptionFields(provider) {
     const temperatureInput = document.getElementById('field-model-temperature');
     temperatureInput.max = provider === 'anthropic' ? '1' : '2';
@@ -1316,11 +1353,17 @@
     document.getElementById('modal-model-title').textContent = existing ? 'Edit Model' : 'Add Model';
     document.getElementById('field-model-id').value = existing?.id || '';
     const provider = existing?.provider || 'openai';
+    modelModalProvider = provider;
+    modelModalExisting = existing;
+    modelModalDefaultRole = defaultRole;
+    invalidateModelCatalog();
+    updateModelCatalogHint(provider);
+    updateModelIdPlaceholder(provider);
     document.getElementById('field-model-title').value = existing?.title || '';
     document.getElementById('field-model-provider').value = provider;
     document.getElementById('field-model-slug').value = existing?.model || '';
     document.getElementById('field-model-base').value =
-      existing?.apiBase || PROVIDER_DEFAULTS[provider].base;
+      existing?.apiBase || PROVIDER_DEFAULTS[provider]?.base || PROVIDER_DEFAULTS.openai.base;
     document.getElementById('field-model-apikey').value = '';
     const generation = existing?.completionOptions || {};
     document.getElementById('field-model-temperature').value = generation.temperature ?? '';
@@ -1344,21 +1387,67 @@
   }
 
   document.getElementById('field-model-provider').addEventListener('change', (e) => {
-    const def = PROVIDER_DEFAULTS[e.target.value];
+    const provider = e.target.value;
+    if (provider !== modelModalProvider) {
+      document.getElementById('field-model-slug').value = '';
+      document.getElementById('field-model-apikey').value = '';
+      invalidateModelCatalog();
+      if (modelModalExisting && provider !== modelModalExisting.provider) {
+        document.getElementById('secret-status-hint').textContent =
+          'Provider changed. Enter an API key for the new provider; the previous provider key will not be reused.';
+      } else {
+        document.getElementById('secret-status-hint').textContent = modelModalExisting?.hasApiKey
+          ? `Current key stored securely (${modelModalExisting.maskedApiKey}). Leave blank to keep it.`
+          : 'Stored privately in OS keychain (SecretStorage) — never saved in plain text.';
+      }
+    }
+    modelModalProvider = provider;
+    updateModelCatalogHint(provider);
+    updateModelIdPlaceholder(provider);
+    const def = PROVIDER_DEFAULTS[provider];
     if (def) {
       document.getElementById('field-model-base').value = def.base;
     }
-    const slugInput = document.getElementById('field-model-slug');
-    if (e.target.value === 'voyage') {
-      slugInput.placeholder = 'e.g., rerank-2.5 or rerank-2';
-    } else if (e.target.value === 'cohere') {
-      slugInput.placeholder = 'e.g., rerank-v3.5';
-    } else if (e.target.value === 'jina') {
-      slugInput.placeholder = 'e.g., jina-reranker-v3';
-    } else {
-      slugInput.placeholder = 'e.g., gpt-4o, claude-3-7-sonnet-latest, llama3.1:8b';
+    updateModelOptionFields(provider);
+  });
+
+  modelCatalogSelect.addEventListener('change', () => {
+    if (modelCatalogSelect.value) {
+      document.getElementById('field-model-slug').value = modelCatalogSelect.value;
     }
-    updateModelOptionFields(e.target.value);
+  });
+  document.getElementById('field-model-slug').addEventListener('input', () => {
+    if (modelCatalogSelect.value !== document.getElementById('field-model-slug').value) {
+      modelCatalogSelect.value = '';
+    }
+  });
+
+  loadModelsButton.addEventListener('click', () => {
+    const provider = document.getElementById('field-model-provider').value;
+    const apiKey = document.getElementById('field-model-apikey').value;
+    const existingId = document.getElementById('field-model-id').value;
+    const hasStoredKey = modelModalExisting?.id === existingId &&
+      modelModalExisting.provider === provider &&
+      modelModalExisting.hasApiKey;
+    if (PROVIDER_DEFAULTS[provider]?.needsKey !== false && !apiKey.trim() && !hasStoredKey) {
+      modelCatalogStatus.textContent = 'Enter an API key for this provider before loading its model catalog.';
+      document.getElementById('field-model-apikey').focus();
+      return;
+    }
+
+    const requestId = ++modelCatalogRequestId;
+    loadModelsButton.disabled = true;
+    loadModelsButton.textContent = 'Loading...';
+    modelCatalogStatus.textContent = 'Loading available models...';
+    vscode.postMessage({
+      type: 'listModels',
+      requestId,
+      provider,
+      apiBase: document.getElementById('field-model-base').value.trim(),
+      apiKey,
+      modelId: existingId,
+      role: Array.from(formModel.querySelectorAll('input[name="role"]:checked'))[0]?.value || modelModalDefaultRole
+    });
   });
 
   document.getElementById('btn-toggle-key-vis').addEventListener('click', (e) => {
@@ -1368,8 +1457,12 @@
     e.target.textContent = isPwd ? 'Hide' : 'Show';
   });
 
-  document.getElementById('btn-close-model-modal').addEventListener('click', () => modalModel.classList.add('hidden'));
-  document.getElementById('btn-cancel-model').addEventListener('click', () => modalModel.classList.add('hidden'));
+  const closeModelModal = () => {
+    invalidateModelCatalog();
+    modalModel.classList.add('hidden');
+  };
+  document.getElementById('btn-close-model-modal').addEventListener('click', closeModelModal);
+  document.getElementById('btn-cancel-model').addEventListener('click', closeModelModal);
 
   formModel.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -1400,7 +1493,7 @@
     };
     const apiKey = document.getElementById('field-model-apikey').value;
     vscode.postMessage({ type: 'saveModel', model, apiKey });
-    modalModel.classList.add('hidden');
+    closeModelModal();
   });
 
   // Doc Modal
@@ -1446,6 +1539,45 @@
           result.textContent = !msg.success
             ? `Test failed: ${msg.error || 'The model request failed.'}`
             : `${msg.modelTitle || 'Model'} responded${msg.matched ? ' and followed the test prompt.' : ', but did not follow the test prompt.'}${msg.response ? `\nResponse: ${msg.response}` : ''}`;
+        }
+        break;
+      }
+
+      case 'modelsListed': {
+        if (
+          msg.requestId !== modelCatalogRequestId ||
+          modalModel.classList.contains('hidden') ||
+          msg.provider !== document.getElementById('field-model-provider').value
+        ) {
+          break;
+        }
+        loadModelsButton.disabled = false;
+        loadModelsButton.textContent = 'Load Models';
+        if (msg.error) {
+          modelCatalogStatus.textContent = `${msg.error} You can still enter a model ID manually.`;
+          break;
+        }
+
+        const models = Array.isArray(msg.models) ? msg.models : [];
+        modelCatalogSelect.innerHTML = '<option value="">Choose a model from the loaded catalog...</option>' +
+          models
+            .map((model) => `<option value="${escapeHtml(model.id)}">${escapeHtml(model.label || model.id)}</option>`)
+            .join('');
+        const modelInput = document.getElementById('field-model-slug');
+        if (models.length === 0) {
+          modelCatalogSelect.classList.add('hidden');
+          modelCatalogStatus.textContent = 'No models were returned. Enter a model ID manually.';
+        } else {
+          modelCatalogSelect.classList.remove('hidden');
+          if (msg.provider === 'anthropic' && !modelInput.value.trim()) {
+            modelInput.value = models[0].id;
+            modelCatalogSelect.value = models[0].id;
+            modelCatalogStatus.textContent =
+              `Auto-selected newest active Claude model: ${models[0].label || models[0].id}. Choose another from the list or enter any model ID.`;
+          } else {
+            modelCatalogStatus.textContent =
+              `${models.length} model${models.length === 1 ? '' : 's'} loaded. Choose one from the list or enter any model ID.`;
+          }
         }
         break;
       }

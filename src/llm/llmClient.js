@@ -644,6 +644,87 @@ class LLMClient {
     return { content, toolCalls };
   }
 
+  async listModels(modelConfig, suppliedApiKey = '', role = 'chat') {
+    if (!modelConfig) throw new Error('No provider configured for model discovery.');
+    const provider = modelConfig.provider || 'openai';
+    const baseUrl = (modelConfig.apiBase || this._getDefaultBaseUrl(provider)).replace(/\/+$/, '');
+    const providedKey = typeof suppliedApiKey === 'string' ? suppliedApiKey.trim() : '';
+    const storedApiKey = providedKey
+      ? ''
+      : await this._secrets.getApiKey(modelConfig.secretKeyId);
+    const apiKey = providedKey || storedApiKey?.trim() || '';
+    if (modelConfig.requiresApiKey && !apiKey) {
+      throw new Error(`Enter an API key for ${modelConfig.title || provider} before loading models.`);
+    }
+
+    let url;
+    const headers = { 'Content-Type': 'application/json' };
+    if (provider === 'anthropic') {
+      url = `${baseUrl}/models?limit=1000&lifecycle=active`;
+      headers['x-api-key'] = apiKey;
+      headers['anthropic-version'] = '2023-06-01';
+    } else if (provider === 'gemini') {
+      url = `${baseUrl}/models`;
+      headers['x-goog-api-key'] = apiKey;
+    } else if (provider === 'ollama') {
+      url = `${baseUrl.replace(/\/v1$/i, '')}/api/tags`;
+    } else if (provider === 'cohere') {
+      const versionedBase = baseUrl.replace(/\/v2$/i, '/v1');
+      const endpoint = role === 'embed' ? 'embed' : role === 'rerank' ? 'rerank' : 'chat';
+      url = `${versionedBase}/models?endpoint=${endpoint}&page_size=1000`;
+      headers.Authorization = `Bearer ${apiKey}`;
+    } else {
+      url = `${baseUrl}/models`;
+      if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+    }
+
+    const response = await fetch(url, { method: 'GET', headers });
+    if (!response.ok) {
+      const responseText = await response.text().catch(() => '');
+      throw new Error(
+        `${provider} model list request failed (${response.status}): ${responseText.slice(0, 300)}`
+      );
+    }
+
+    const result = await response.json();
+    let entries;
+    if (provider === 'anthropic') {
+      entries = result.data;
+    } else if (provider === 'gemini') {
+      const method = role === 'embed' ? 'embedContent' : 'generateContent';
+      entries = (result.models || []).filter((model) =>
+        !Array.isArray(model.supportedGenerationMethods) ||
+        model.supportedGenerationMethods.includes(method)
+      );
+    } else if (provider === 'ollama') {
+      entries = result.models;
+    } else if (provider === 'cohere') {
+      entries = result.models;
+    } else {
+      entries = result.data || result.models;
+    }
+
+    if (!Array.isArray(entries)) {
+      throw new Error(`${provider} returned an unsupported model list response.`);
+    }
+
+    const models = entries
+      .map((entry) => {
+        const id = provider === 'gemini'
+          ? entry.baseModelId || String(entry.name || '').replace(/^models\//, '')
+          : entry.id || entry.name;
+        return {
+          id: typeof id === 'string' ? id : '',
+          label: entry.display_name || entry.displayName || entry.name || entry.id || id || ''
+        };
+      })
+      .filter((model) => model.id)
+      .filter((model, index, list) => list.findIndex((candidate) => candidate.id === model.id) === index)
+      .slice(0, 500);
+
+    return models;
+  }
+
   /**
    * Generate embeddings using the configured Embed model.
    * @param {Object} modelConfig

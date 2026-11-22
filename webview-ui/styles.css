@@ -1090,6 +1090,10 @@ textarea:focus-visible,
 .cp-secret-row { display: flex; gap: 6px; min-width: 0; }
 .cp-secret-row .cp-input { flex: 1; }
 
+.cp-model-id-row { display: flex; gap: 6px; min-width: 0; }
+.cp-model-id-row .cp-input { flex: 1; min-width: 0; }
+.cp-model-id-row .cp-ghost-btn { flex-shrink: 0; }
+
 .cp-checkbox-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

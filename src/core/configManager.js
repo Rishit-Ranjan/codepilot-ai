@@ -348,7 +348,11 @@ class ConfigManager {
   async saveModel(modelInput, apiKey) {
     const profile = this.getActiveProfile();
     const id = modelInput.id || `model-${Date.now()}`;
-    const secretKeyId = modelInput.secretKeyId || SecretManager.buildKeyId(id);
+    const existingModel = profile.models.find((model) => model.id === id);
+    const providerChanged = existingModel && existingModel.provider !== modelInput.provider;
+    const secretKeyId = providerChanged
+      ? SecretManager.buildKeyId(`${id}-${modelInput.provider}`)
+      : modelInput.secretKeyId || existingModel?.secretKeyId || SecretManager.buildKeyId(id);
     const cleanModel = sanitizeModel({
       ...modelInput,
       id,

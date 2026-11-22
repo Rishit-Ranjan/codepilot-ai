@@ -101,6 +101,8 @@ Supported provider types include:
 
 API keys are saved using VS Code `SecretStorage`. They are not stored in `settings.json` or workspace configuration files.
 
+When adding a cloud model, enter its API key and choose **Load Models** to browse the provider's available model IDs. For Anthropic, loading the catalog automatically selects the newest active Claude model if the Model ID field is empty. The Model ID field remains editable, so you can select another listed model or enter a custom ID. If a provider does not expose a model catalog, enter the ID manually.
+
 Each model can have provider-specific generation settings, such as temperature, maximum output tokens, top-p, penalties, or context length.
 
 Use **Test Model** in the Models settings to verify a role before using it.

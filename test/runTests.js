@@ -82,6 +82,21 @@ async function run() {
   assert.strictEqual(gptModel.hasApiKey, true);
   assert.strictEqual('apiKey' in gptModel, false);
   assert.strictEqual(gptModel.completionOptions.maxTokens, 1024);
+  const providerSwitchModel = await cfgMgr.saveModel({
+    id: 'model-provider-switch',
+    title: 'Switchable model',
+    provider: 'openai',
+    model: 'gpt-test',
+    roles: ['edit']
+  }, 'sk-openai-switch-test');
+  const switchedProviderModel = await cfgMgr.saveModel({
+    ...providerSwitchModel,
+    provider: 'anthropic',
+    model: 'claude-test'
+  }, '');
+  assert.notStrictEqual(switchedProviderModel.secretKeyId, providerSwitchModel.secretKeyId);
+  assert.strictEqual(await secretMgr.hasApiKey(switchedProviderModel.secretKeyId), false);
+  assert.strictEqual(await secretMgr.hasApiKey(providerSwitchModel.secretKeyId), true);
   const mainProfileSummary = publicState.profiles.find((p) => p.id === 'main');
   assert.strictEqual(mainProfileSummary.modelAssignments.chat, 'Llama 3.1 8B');
   assert.ok(publicState.profile.skills.length >= 3);
@@ -450,6 +465,94 @@ async function run() {
     assert.deepStrictEqual(cohereEmbeddings, [[0.12, 0.24, 0.48]]);
     global.fetch = originalFetch;
 
+    const catalogFetch = global.fetch;
+    global.fetch = async (url, request) => {
+      assert.strictEqual(request.method, 'GET');
+      if (String(url).startsWith('https://api.anthropic.com/v1/models?')) {
+        assert.strictEqual(request.headers['x-api-key'], 'catalog-test-key');
+        return {
+          ok: true,
+          async json() {
+            return {
+              data: [
+                { id: 'claude-newest', display_name: 'Claude Newest' },
+                { id: 'claude-older', display_name: 'Claude Older' }
+              ]
+            };
+          }
+        };
+      }
+      if (String(url) === 'https://generativelanguage.googleapis.com/v1beta/models') {
+        assert.strictEqual(request.headers['x-goog-api-key'], 'catalog-test-key');
+        return {
+          ok: true,
+          async json() {
+            return {
+              models: [
+                { name: 'models/gemini-chat', baseModelId: 'gemini-chat', displayName: 'Gemini Chat', supportedGenerationMethods: ['generateContent'] },
+                { name: 'models/gemini-embed', baseModelId: 'gemini-embed', displayName: 'Gemini Embed', supportedGenerationMethods: ['embedContent'] }
+              ]
+            };
+          }
+        };
+      }
+      if (String(url) === 'https://api.cohere.com/v1/models?endpoint=rerank&page_size=1000') {
+        assert.strictEqual(request.headers.Authorization, 'Bearer catalog-test-key');
+        return {
+          ok: true,
+          async json() {
+            return { models: [{ name: 'rerank-model' }] };
+          }
+        };
+      }
+      if (String(url) === 'https://api.openai.com/v1/models') {
+        assert.strictEqual(request.headers.Authorization, 'Bearer catalog-test-key');
+        return {
+          ok: true,
+          async json() {
+            return { data: [{ id: 'gpt-custom', name: 'GPT Custom' }] };
+          }
+        };
+      }
+      throw new Error(`Unexpected model catalog URL: ${url}`);
+    };
+    const anthropicModels = await llmClient.listModels({
+      title: 'Anthropic',
+      provider: 'anthropic',
+      apiBase: 'https://api.anthropic.com/v1',
+      requiresApiKey: true
+    }, 'catalog-test-key');
+    assert.deepStrictEqual(anthropicModels[0], { id: 'claude-newest', label: 'Claude Newest' });
+    const geminiModels = await llmClient.listModels({
+      title: 'Gemini',
+      provider: 'gemini',
+      apiBase: 'https://generativelanguage.googleapis.com/v1beta',
+      requiresApiKey: true
+    }, 'catalog-test-key');
+    assert.deepStrictEqual(geminiModels, [{ id: 'gemini-chat', label: 'Gemini Chat' }]);
+    const geminiEmbedModels = await llmClient.listModels({
+      title: 'Gemini',
+      provider: 'gemini',
+      apiBase: 'https://generativelanguage.googleapis.com/v1beta',
+      requiresApiKey: true
+    }, 'catalog-test-key', 'embed');
+    assert.deepStrictEqual(geminiEmbedModels, [{ id: 'gemini-embed', label: 'Gemini Embed' }]);
+    const cohereModels = await llmClient.listModels({
+      title: 'Cohere',
+      provider: 'cohere',
+      apiBase: 'https://api.cohere.com/v2',
+      requiresApiKey: true
+    }, 'catalog-test-key', 'rerank');
+    assert.deepStrictEqual(cohereModels, [{ id: 'rerank-model', label: 'rerank-model' }]);
+    const openAiModels = await llmClient.listModels({
+      title: 'OpenAI',
+      provider: 'openai',
+      apiBase: 'https://api.openai.com/v1',
+      requiresApiKey: true
+    }, 'catalog-test-key');
+    assert.deepStrictEqual(openAiModels, [{ id: 'gpt-custom', label: 'GPT Custom' }]);
+    global.fetch = catalogFetch;
+
     const activeFetch = global.fetch;
     global.fetch = async () => {
       const error = new TypeError('fetch failed');
@@ -702,6 +805,46 @@ async function run() {
     items: [],
     error: 'Documentation source unavailable.'
   });
+
+  const modelListMessages = [];
+  let modelListConfig;
+  const modelListProvider = Object.create(SidebarProvider.prototype);
+  modelListProvider._config = {
+    getActiveProfile: () => ({
+      models: [{ id: 'existing-model', provider: 'openai', secretKeyId: 'stored-openai-key' }]
+    })
+  };
+  modelListProvider._llm = {
+    async listModels(config) {
+      modelListConfig = config;
+      return [{ id: 'available-model', label: 'Available Model' }];
+    }
+  };
+  modelListProvider.postMessage = (message) => modelListMessages.push(message);
+  await modelListProvider._handleMessage({
+    type: 'listModels',
+    requestId: 21,
+    provider: 'anthropic',
+    modelId: 'existing-model',
+    apiBase: 'https://api.anthropic.com/v1',
+    apiKey: 'new-anthropic-key'
+  });
+  assert.strictEqual(modelListConfig.secretKeyId, undefined);
+  assert.deepStrictEqual(modelListMessages[0], {
+    type: 'modelsListed',
+    requestId: 21,
+    provider: 'anthropic',
+    models: [{ id: 'available-model', label: 'Available Model' }]
+  });
+  await modelListProvider._handleMessage({
+    type: 'listModels',
+    requestId: 22,
+    provider: 'openai',
+    modelId: 'existing-model',
+    apiBase: 'https://api.openai.com/v1',
+    apiKey: ''
+  });
+  assert.strictEqual(modelListConfig.secretKeyId, 'stored-openai-key');
 
   // 5. SessionManager tests
   const wsState = createMockMemento();

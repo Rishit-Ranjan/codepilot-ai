@@ -200,6 +200,54 @@ class SidebarProvider {
           await this._testModel(msg.role, msg.modelId);
           break;
 
+        case 'listModels': {
+          const provider = String(msg.provider || '');
+          const allowedProviders = [
+            'openai', 'anthropic', 'gemini', 'openrouter', 'voyage',
+            'cohere', 'jina', 'custom', 'ollama'
+          ];
+          if (!allowedProviders.includes(provider)) {
+            this.postMessage({
+              type: 'modelsListed',
+              requestId: msg.requestId,
+              provider,
+              error: 'Select a supported model provider.'
+            });
+            break;
+          }
+
+          const existingModel = this._config.getActiveProfile().models.find(
+            (model) => model.id === msg.modelId && model.provider === provider
+          );
+          try {
+            const models = await this._llm.listModels(
+              {
+                title: existingModel?.title || provider,
+                provider,
+                apiBase: String(msg.apiBase || ''),
+                requiresApiKey: provider !== 'ollama',
+                secretKeyId: existingModel?.secretKeyId
+              },
+              typeof msg.apiKey === 'string' ? msg.apiKey : '',
+              String(msg.role || 'chat')
+            );
+            this.postMessage({
+              type: 'modelsListed',
+              requestId: msg.requestId,
+              provider,
+              models
+            });
+          } catch (err) {
+            this.postMessage({
+              type: 'modelsListed',
+              requestId: msg.requestId,
+              provider,
+              error: err.message || 'Unable to load models.'
+            });
+          }
+          break;
+        }
+
         case 'saveModel':
           await this._config.saveModel(msg.model, msg.apiKey);
           await this.pushFullState();

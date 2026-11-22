@@ -254,7 +254,14 @@
           </label>
           <label class="cp-label">
             Model ID
-            <input id="field-model-slug" class="cp-input" type="text" placeholder="e.g., gpt-4o, claude-3-7-sonnet-latest, llama3.1:8b" required />
+            <div class="cp-model-id-row">
+              <input id="field-model-slug" class="cp-input" type="text" placeholder="Load models or enter any model ID" required />
+              <button type="button" id="btn-load-models" class="cp-ghost-btn">Load Models</button>
+            </div>
+            <select id="model-catalog-select" class="cp-select hidden" aria-label="Choose an available model"></select>
+            <small id="model-catalog-status" class="cp-muted" role="status" aria-live="polite">
+              Enter an API key to load available models, or type a model ID manually. Loading Claude models auto-selects the newest active model when this field is empty.
+            </small>
           </label>
           <label class="cp-label">
             API Base URL

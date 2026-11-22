@@ -1,6 +1,6 @@
-# CodePilot AI
+# CodePilot AI (VS Code Extension)
 
-**CodePilot AI** is  privacy-first AI coding assistant for Visual Studio Code built in pure JavaScript.
+**CodePilot AI** is privacy-first AI coding assistant for VS Code built in pure JavaScript.
 
 ## Key Features
 

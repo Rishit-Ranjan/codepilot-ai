@@ -143,6 +143,7 @@ class SidebarProvider {
           this.postMessage({
             type: 'contextProviderResults',
             providerId: msg.providerId,
+            requestId: msg.requestId,
             items
           });
           break;

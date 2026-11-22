@@ -13,6 +13,7 @@
   let streamingModelTitle = '';
   let streamingText = '';
   let activeSearchProvider = null;
+  let contextSearchRequestId = 0;
   let toastTimeout = null;
 
   const PROVIDER_DEFAULTS = {
@@ -78,6 +79,7 @@
     menuSkills.classList.add('hidden');
     menuContext.classList.add('hidden');
     activeSearchProvider = null;
+    contextSearchRequestId++;
     contextMenuHeader.classList.add('hidden');
   }
 
@@ -327,6 +329,9 @@
     if (!menuSkills.contains(e.target) && !btnSkillsPicker.contains(e.target)) {
       menuSkills.classList.add('hidden');
     }
+    if (!menuContext.contains(e.target) && !document.getElementById('btn-at-context').contains(e.target)) {
+      closeContextMenu();
+    }
     if (!e.target.closest('.cp-dropdown-wrap') && !e.target.closest('.cp-input-wrap') && !e.target.closest('#btn-at-context')) {
       closeAllPopovers();
     }
@@ -342,6 +347,7 @@
   // @ Context Menu
   function openContextMenu() {
     activeSearchProvider = null;
+    contextSearchRequestId++;
     contextMenuHeader.classList.add('hidden');
     renderContextProvidersRoot();
     menuContext.classList.remove('hidden');
@@ -349,8 +355,15 @@
 
   function closeContextMenu() {
     activeSearchProvider = null;
+    contextSearchRequestId++;
     contextMenuHeader.classList.add('hidden');
     menuContext.classList.add('hidden');
+  }
+
+  function searchContextProvider(providerId, query) {
+    const requestId = ++contextSearchRequestId;
+    contextMenuList.innerHTML = '<div class="cp-muted" style="padding:8px;">Searching...</div>';
+    vscode.postMessage({ type: 'searchContextProvider', providerId, query, requestId });
   }
 
   function clearContextTrigger() {
@@ -377,11 +390,14 @@
 
   contextSearchInput.addEventListener('input', () => {
     if (activeSearchProvider) {
-      vscode.postMessage({
-        type: 'searchContextProvider',
-        providerId: activeSearchProvider,
-        query: contextSearchInput.value
-      });
+      searchContextProvider(activeSearchProvider, contextSearchInput.value);
+    }
+  });
+  contextSearchInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeContextMenu();
+      chatInput.focus();
     }
   });
 
@@ -408,7 +424,7 @@
           contextMenuHeader.classList.remove('hidden');
           contextSearchInput.value = '';
           contextSearchInput.focus();
-          vscode.postMessage({ type: 'searchContextProvider', providerId: pid, query: '' });
+          searchContextProvider(pid, '');
         } else {
           const prov = providers.find((x) => x.id === pid);
           clearContextTrigger();
@@ -1551,6 +1567,13 @@
       }
 
       case 'contextProviderResults': {
+        if (
+          menuContext.classList.contains('hidden') ||
+          msg.requestId !== contextSearchRequestId ||
+          msg.providerId !== activeSearchProvider
+        ) {
+          break;
+        }
         const items = msg.items || [];
         contextMenuList.innerHTML =
           items.length === 0

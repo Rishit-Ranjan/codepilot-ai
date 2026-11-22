@@ -55,7 +55,8 @@ async function activate(context) {
 
   const storagePath = context.storageUri?.fsPath || context.globalStorageUri.fsPath;
   const indexer = new CodebaseIndexer(storagePath, llmClient);
-  await indexer.loadFromDisk();
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+  await indexer.loadFromDisk(workspaceRoot);
 
   const contextProviders = new ContextProviderService(vscode, indexer, configManager, llmClient);
   const toolsRunner = new BuiltInToolsRunner(vscode, configManager, indexer);
@@ -73,6 +74,18 @@ async function activate(context) {
   context.subscriptions.push(
     window.registerWebviewViewProvider('codepilot.chatView', sidebarProvider, {
       webviewOptions: { retainContextWhenHidden: true }
+    })
+  );
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      if (configManager.getActiveProfile().indexing.enabled) {
+        sidebarProvider.triggerReindex(true).catch((err) => {
+          sidebarProvider.postMessage({
+            type: 'errorToast',
+            message: `CodePilot AI indexing failed: ${err.message || 'Unable to index the workspace.'}`
+          });
+        });
+      }
     })
   );
 
@@ -189,7 +202,7 @@ async function activate(context) {
   // Command: Re-index Codebase
   context.subscriptions.push(
     commands.registerCommand('codepilot.reindexCodebase', async () => {
-      await sidebarProvider.triggerReindex();
+      await sidebarProvider.triggerReindex(true);
     })
   );
 
@@ -259,11 +272,16 @@ async function activate(context) {
     )
   );
 
-  // Kick off background indexing if enabled and not yet indexed
+  // Index a new or uncached workspace in the background.
   const activeProfile = configManager.getActiveProfile();
-  if (activeProfile.indexing.enabled && indexer.getStatus().chunkCount === 0) {
+  if (activeProfile.indexing.enabled && !indexer.isIndexedFor(workspaceRoot)) {
     setTimeout(() => {
-      sidebarProvider.triggerReindex().catch(() => {});
+      sidebarProvider.triggerReindex().catch((err) => {
+        sidebarProvider.postMessage({
+          type: 'errorToast',
+          message: `CodePilot AI indexing failed: ${err.message || 'Unable to index the workspace.'}`
+        });
+      });
     }, 1500);
   }
 }

@@ -417,6 +417,23 @@ async function run() {
   assert.ok(hits.length > 0 && hits[0].filePath.includes('authService.js'));
   const ignoredHits = indexer.searchCodebase('xyzIgnoredFn', 5);
   assert.strictEqual(ignoredHits.length, 0, '.gitignore directory should not be indexed');
+  assert.strictEqual(indexer.isIndexedFor(tmpRoot), true);
+
+  const secondWorkspace = path.join(tmpRoot, 'second-workspace');
+  fs.mkdirSync(secondWorkspace);
+  fs.writeFileSync(
+    path.join(secondWorkspace, 'dashboard.js'),
+    'function renderDashboard() { return "dashboard"; }\n',
+    'utf8'
+  );
+  const workspaceAwareIndexer = new CodebaseIndexer(storageDir);
+  await workspaceAwareIndexer.loadFromDisk(secondWorkspace);
+  assert.strictEqual(workspaceAwareIndexer.getStatus().chunkCount, 0);
+  assert.strictEqual(workspaceAwareIndexer.isIndexedFor(secondWorkspace), false);
+  await workspaceAwareIndexer.indexWorkspace(secondWorkspace);
+  assert.strictEqual(workspaceAwareIndexer.isIndexedFor(secondWorkspace), true);
+  assert.strictEqual(workspaceAwareIndexer.searchCodebase('verifyAuthToken', 5).length, 0);
+  assert.ok(workspaceAwareIndexer.searchCodebase('renderDashboard', 5).length > 0);
 
   const docChunks = await indexer.indexDocumentationSource({ id: 'doc1', title: 'Guide', url: docFile });
   assert.ok(docChunks >= 1);

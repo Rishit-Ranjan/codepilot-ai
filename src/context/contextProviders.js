@@ -196,9 +196,21 @@ class ContextProviderService {
               : 'No active rules enabled.'
           });
         } else if (att.provider === 'codebase') {
-          let hits = this._indexer.searchCodebase(userQuery, 12);
+          const profile = this._config.getActiveProfile();
+          const workspaceRoot = this.getWorkspaceRoot();
+          let hits = [];
+          let unavailableReason = '';
+          if (!profile.indexing.enabled) {
+            unavailableReason = 'Codebase indexing is disabled. Enable it in Indexing settings to use @codebase.';
+          } else if (!workspaceRoot) {
+            unavailableReason = 'Open a workspace folder to use @codebase.';
+          } else if (!this._indexer.isIndexedFor(workspaceRoot)) {
+            unavailableReason = 'The workspace codebase is still being indexed. Try your request again shortly.';
+          } else {
+            hits = this._indexer.searchCodebase(userQuery, 12);
+          }
           const rerankModel = this._config.getModelForRole('rerank');
-          if (rerankModel && this._llm && hits.length > 1) {
+          if (!unavailableReason && rerankModel && this._llm && hits.length > 1) {
             try {
               const reranked = await this._llm.rerankTexts(
                 rerankModel,
@@ -219,7 +231,7 @@ class ContextProviderService {
             title: '@codebase Search Results',
             content: hits.length > 0
               ? hits.map((h) => `### ${h.filePath}:${h.startLine}-${h.endLine}\n\`\`\`\n${h.text}\n\`\`\``).join('\n\n')
-              : 'No matching chunks found in @codebase index.'
+              : unavailableReason || 'No matching chunks found in @codebase index.'
           });
         } else if (att.provider === 'docs') {
           let hits = this._indexer.searchDocs(userQuery, 10);

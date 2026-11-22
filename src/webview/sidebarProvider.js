@@ -25,6 +25,8 @@ class SidebarProvider {
     this._mode = 'chat'; // 'chat' | 'plan' | 'agent'
     this._abortController = null;
     this._activeChatTurn = null;
+    this._reindexPromise = null;
+    this._reindexRoot = '';
     this._pendingApprovals = new Map();
   }
 
@@ -246,11 +248,12 @@ class SidebarProvider {
 
         case 'toggleIndexing':
           await this._config.updateIndexingSettings({ enabled: Boolean(msg.enabled) });
+          if (msg.enabled) await this.triggerReindex();
           await this.pushFullState();
           break;
 
         case 'reindexCodebase':
-          await this.triggerReindex();
+          await this.triggerReindex(true);
           break;
 
         case 'addDocSource': {
@@ -449,20 +452,45 @@ class SidebarProvider {
     }
   }
 
-  async triggerReindex() {
+  async triggerReindex(force = false) {
     const profile = this._config.getActiveProfile();
     if (!profile.indexing.enabled) return;
     const root = this._vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
-    const embedModel = this._config.getModelForRole('embed');
-    await this._indexer.indexWorkspace(root, {
-      chunkSizeLines: profile.indexing.chunkSizeLines,
-      maxFileSizeKb: profile.indexing.maxFileSizeKb,
-      embedModel,
-      onProgress: (status) => {
-        this.postMessage({ type: 'indexProgress', status });
+    if (!force && this._indexer.isIndexedFor(root)) return;
+    if (this._reindexPromise && this._reindexRoot !== root) {
+      try {
+        await this._reindexPromise;
+      } catch (_) {
+        // Continue with the newly selected workspace after the previous run stops.
       }
-    });
-    await this.pushFullState();
+      return this.triggerReindex(force);
+    }
+
+    if (!this._reindexPromise) {
+      this._reindexRoot = root;
+      this._reindexPromise = (async () => {
+        const embedModel = this._config.getModelForRole('embed');
+        await this._indexer.indexWorkspace(root, {
+          chunkSizeLines: profile.indexing.chunkSizeLines,
+          maxFileSizeKb: profile.indexing.maxFileSizeKb,
+          embedModel,
+          onProgress: (status) => {
+            this.postMessage({ type: 'indexProgress', status });
+          }
+        });
+        await this.pushFullState();
+      })();
+    }
+
+    const reindexPromise = this._reindexPromise;
+    try {
+      await reindexPromise;
+    } finally {
+      if (this._reindexPromise === reindexPromise) {
+        this._reindexPromise = null;
+        this._reindexRoot = '';
+      }
+    }
   }
 
   async _stopActiveChatTurn() {
@@ -530,6 +558,9 @@ class SidebarProvider {
     });
     let contextBlocks;
     try {
+      if (attachments.some((attachment) => attachment.provider === 'codebase')) {
+        await this.triggerReindex();
+      }
       contextBlocks = await this._contextProviders.resolveAttachments(attachments, userText);
     } catch (err) {
       releaseAbortController();

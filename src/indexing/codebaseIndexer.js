@@ -1,7 +1,7 @@
 'use strict';
 
 import { existsSync, promises, readFileSync, readdirSync, statSync } from 'fs';
-import { join, relative, extname } from 'path';
+import { join, relative, extname, resolve } from 'path';
 
 const DEFAULT_IGNORED_DIRS = new Set([
   'node_modules',
@@ -43,6 +43,7 @@ class CodebaseIndexer {
     this._indexFile = join(storageDir, 'codepilot-index.json');
     this._chunks = [];
     this._docsChunks = [];
+    this._workspaceRoot = '';
     this._idf = new Map();
     this._avgDocLen = 0;
     this._status = {
@@ -60,22 +61,29 @@ class CodebaseIndexer {
     return { ...this._status };
   }
 
-  async loadFromDisk() {
+  async loadFromDisk(workspaceRoot = '') {
     try {
       if (existsSync(this._indexFile)) {
         const raw = await promises.readFile(this._indexFile, 'utf8');
         const parsed = JSON.parse(raw);
-        this._chunks = Array.isArray(parsed.chunks) ? parsed.chunks : [];
         this._docsChunks = Array.isArray(parsed.docsChunks) ? parsed.docsChunks : [];
+        const requestedRoot = normalizeWorkspaceRoot(workspaceRoot);
+        const savedRoot = normalizeWorkspaceRoot(parsed.workspaceRoot || '');
+        this._workspaceRoot = savedRoot;
+        const sameWorkspace = !requestedRoot || requestedRoot === savedRoot;
+        this._chunks = sameWorkspace && Array.isArray(parsed.chunks) ? parsed.chunks : [];
+        if (requestedRoot && !sameWorkspace) this._workspaceRoot = '';
         this._rebuildBM25Stats();
         this._status = {
-          state: 'complete',
-          fileCount: parsed.fileCount || 0,
+          state: sameWorkspace ? 'complete' : 'idle',
+          fileCount: sameWorkspace ? parsed.fileCount || 0 : 0,
           chunkCount: this._chunks.length,
           docsCount: this._docsChunks.length,
-          lastIndexedAt: parsed.lastIndexedAt || null,
-          progress: 100,
-          message: this._chunks.length > 0 ? 'Indexing complete' : 'Ready to index'
+          lastIndexedAt: sameWorkspace ? parsed.lastIndexedAt || null : null,
+          progress: sameWorkspace ? 100 : 0,
+          message: sameWorkspace
+            ? this._chunks.length > 0 ? 'Indexing complete' : 'Ready to index'
+            : 'Workspace changed; indexing required'
         };
       }
     } catch (_) {
@@ -88,6 +96,7 @@ class CodebaseIndexer {
       await promises.mkdir(this._storageDir, { recursive: true });
       const payload = {
         version: 1,
+        workspaceRoot: this._workspaceRoot,
         fileCount,
         lastIndexedAt: Date.now(),
         chunks: this._chunks,
@@ -110,6 +119,9 @@ class CodebaseIndexer {
    */
   async indexWorkspace(rootDir, options = {}) {
     if (!rootDir || !existsSync(rootDir)) {
+      this._workspaceRoot = '';
+      this._chunks = [];
+      this._rebuildBM25Stats();
       this._status = {
         ...this._status,
         state: 'complete',
@@ -118,9 +130,17 @@ class CodebaseIndexer {
         progress: 100,
         message: 'No workspace folder open'
       };
+      await this._saveToDisk(0);
       if (options.onProgress) options.onProgress(this.getStatus());
       return this.getStatus();
     }
+
+    const workspaceRoot = normalizeWorkspaceRoot(rootDir);
+    if (workspaceRoot !== this._workspaceRoot) {
+      this._chunks = [];
+      this._rebuildBM25Stats();
+    }
+    this._workspaceRoot = workspaceRoot;
 
     const chunkSizeLines = options.chunkSizeLines || 60;
     const maxBytes = (options.maxFileSizeKb || 512) * 1024;
@@ -265,6 +285,7 @@ class CodebaseIndexer {
       if (queryEmbedding && Array.isArray(chunk.embedding)) {
         sim = cosineSimilarity(queryEmbedding, chunk.embedding);
       }
+
       return {
         filePath: chunk.filePath,
         startLine: chunk.startLine,
@@ -279,6 +300,14 @@ class CodebaseIndexer {
       .filter((s) => s.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, topK);
+  }
+
+  isIndexedFor(workspaceRoot) {
+    return Boolean(
+      workspaceRoot &&
+      this._status.state === 'complete' &&
+      this._workspaceRoot === normalizeWorkspaceRoot(workspaceRoot)
+    );
   }
 
   searchDocs(query, topK = 6) {
@@ -431,6 +460,12 @@ function tokenize(text) {
     .toLowerCase()
     .split(/[^a-z0-9_]+/)
     .filter((t) => t.length >= 2);
+}
+
+function normalizeWorkspaceRoot(rootDir) {
+  if (!rootDir) return '';
+  const normalized = resolve(rootDir);
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
 function extractSymbols(text) {

@@ -49,7 +49,7 @@ class SidebarProvider {
 
   async pushFullState() {
     const publicConfig = await this._config.getPublicState();
-    const activeSession = this._sessions.getActiveSession();
+    const activeSession = await this._sessions.getActiveSession();
     const lastSession = this._sessions.getLastNonEmptySession();
     this.postMessage({
       type: 'stateUpdate',
@@ -139,24 +139,32 @@ class SidebarProvider {
         }
 
         case 'searchContextProvider': {
-          const items = await this._contextProviders.searchProviderItems(msg.providerId, msg.query);
+          let items;
+          let error;
+          try {
+            items = await this._contextProviders.searchProviderItems(msg.providerId, msg.query);
+          } catch (err) {
+            items = [];
+            error = err.message || 'Context search failed.';
+          }
           this.postMessage({
             type: 'contextProviderResults',
             providerId: msg.providerId,
             requestId: msg.requestId,
-            items
+            items,
+            error
           });
           break;
         }
 
         case 'newSession':
           await this._stopActiveChatTurn();
-          this._sessions.createSession();
+          await this._sessions.createSession();
           await this.pushFullState();
           break;
 
         case 'switchSession':
-          if (msg.sessionId !== this._sessions.getActiveSession().id) {
+          if (msg.sessionId !== (await this._sessions.getActiveSession()).id) {
             await this._stopActiveChatTurn();
           }
           await this._sessions.switchSession(msg.sessionId);
@@ -166,7 +174,7 @@ class SidebarProvider {
         case 'restoreLastSession': {
           const last = this._sessions.getLastNonEmptySession();
           if (last) {
-            if (last.id !== this._sessions.getActiveSession().id) {
+            if (last.id !== (await this._sessions.getActiveSession()).id) {
               await this._stopActiveChatTurn();
             }
             await this._sessions.switchSession(last.id);
@@ -176,7 +184,7 @@ class SidebarProvider {
         }
 
         case 'deleteSession':
-          if (msg.sessionId === this._sessions.getActiveSession().id) {
+          if (msg.sessionId === (await this._sessions.getActiveSession()).id) {
             await this._stopActiveChatTurn();
           }
           await this._sessions.deleteSession(msg.sessionId);
@@ -502,7 +510,7 @@ class SidebarProvider {
   }
 
   async _runChatTurn(msg) {
-    const session = this._sessions.getActiveSession();
+    const session = await this._sessions.getActiveSession();
     const userText = String(msg.text || '').trim();
     const attachments = Array.isArray(msg.attachments) ? msg.attachments : [];
     if (!userText && attachments.length === 0) return;

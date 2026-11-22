@@ -175,6 +175,47 @@ async function run() {
     assert.strictEqual(requestBody.top_p, 0.75);
     assert.strictEqual('temperature' in requestBody, false);
 
+    const toolSchema = [{
+      type: 'function',
+      function: {
+        name: 'read_file',
+        description: 'Read a workspace file.',
+        parameters: { type: 'object', properties: { path: { type: 'string' } } }
+      }
+    }];
+    const toolFollowupMessages = [
+      { role: 'user', content: 'Read two files.' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          { id: 'anthropic-call-1', type: 'function', function: { name: 'read_file', arguments: '{"path":"a.js"}' } },
+          { id: 'anthropic-call-2', type: 'function', function: { name: 'read_file', arguments: '{"path":"b.js"}' } }
+        ]
+      },
+      { role: 'tool', tool_call_id: 'anthropic-call-1', content: 'first file' },
+      { role: 'tool', tool_call_id: 'anthropic-call-2', content: 'second file' }
+    ];
+    await llmClient.chat({
+      modelConfig: {
+        title: 'Claude',
+        provider: 'anthropic',
+        model: 'claude-test',
+        apiBase: 'https://api.anthropic.com/v1',
+        requiresApiKey: true,
+        secretKeyId: keyId
+      },
+      messages: toolFollowupMessages,
+      tools: toolSchema,
+      stream: false
+    });
+    assert.strictEqual(requestBody.messages[1].role, 'assistant');
+    assert.strictEqual(requestBody.messages[1].content[0].type, 'tool_use');
+    assert.deepStrictEqual(requestBody.messages[1].content[0].input, { path: 'a.js' });
+    assert.strictEqual(requestBody.messages[2].role, 'user');
+    assert.strictEqual(requestBody.messages[2].content.length, 2);
+    assert.strictEqual(requestBody.messages[2].content[1].type, 'tool_result');
+
     await llmClient.chat({
       modelConfig: {
         title: 'Gemini',
@@ -198,6 +239,37 @@ async function run() {
     assert.strictEqual(requestBody.generationConfig.topP, 0.8);
     assert.strictEqual(requestBody.generationConfig.frequencyPenalty, 0.2);
     assert.strictEqual(requestBody.generationConfig.presencePenalty, 0.3);
+
+    await llmClient.chat({
+      modelConfig: {
+        title: 'Gemini',
+        provider: 'gemini',
+        model: 'gemini-test',
+        apiBase: 'https://generativelanguage.googleapis.com/v1beta',
+        requiresApiKey: true,
+        secretKeyId: keyId
+      },
+      messages: [
+        { role: 'user', content: 'Read two files.' },
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            { id: 'gemini-call-1', type: 'function', function: { name: 'read_file', arguments: '{"path":"a.js"}' } },
+            { id: 'gemini-call-2', type: 'function', function: { name: 'read_file', arguments: '{"path":"b.js"}' } }
+          ]
+        },
+        { role: 'tool', tool_call_id: 'gemini-call-1', content: 'first file' },
+        { role: 'tool', tool_call_id: 'gemini-call-2', content: 'second file' }
+      ],
+      tools: toolSchema,
+      stream: false
+    });
+    assert.strictEqual(requestBody.contents[1].role, 'model');
+    assert.deepStrictEqual(requestBody.contents[1].parts[0].functionCall.args, { path: 'a.js' });
+    assert.strictEqual(requestBody.contents[2].role, 'user');
+    assert.strictEqual(requestBody.contents[2].parts.length, 2);
+    assert.strictEqual(requestBody.contents[2].parts[1].functionResponse.name, 'read_file');
 
     await llmClient.chat({
       modelConfig: {
@@ -254,6 +326,39 @@ async function run() {
     });
     assert.strictEqual(streamed.content, 'Hello there.');
     assert.deepStrictEqual(streamedTokens, ['Hello', ' there.']);
+
+    global.fetch = async () => ({
+      ok: true,
+      body: {
+        getReader() {
+          let sent = false;
+          return {
+            async read() {
+              if (sent) return { done: true };
+              sent = true;
+              return {
+                done: false,
+                value: new TextEncoder().encode(
+                  'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"tail"}}'
+                )
+              };
+            }
+          };
+        }
+      }
+    });
+    const finalSseLine = await llmClient.chat({
+      modelConfig: {
+        title: 'Claude',
+        provider: 'anthropic',
+        model: 'claude-test',
+        apiBase: 'https://api.anthropic.com/v1',
+        requiresApiKey: true,
+        secretKeyId: keyId
+      },
+      messages: [{ role: 'user', content: 'Hello' }]
+    });
+    assert.strictEqual(finalSseLine.content, 'tail');
 
     const rerankFetchUrl = '';
     global.fetch = async (url, request) => {
@@ -553,6 +658,16 @@ async function run() {
     () => toolsRunner.execute('read_file', { path: '../outside.txt' }),
     /Access denied outside workspace root/
   );
+  const outsideToolDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codepilot-outside-'));
+  fs.writeFileSync(path.join(outsideToolDir, 'secret.txt'), 'outside workspace', 'utf8');
+  const outsideToolLink = path.join(tmpRoot, 'linked-outside');
+  fs.symlinkSync(outsideToolDir, outsideToolLink, 'junction');
+  await assert.rejects(
+    () => toolsRunner.execute('read_file', { path: path.join('linked-outside', 'secret.txt') }),
+    /Access denied outside workspace root/
+  );
+  fs.rmSync(outsideToolLink, { recursive: true, force: true });
+  fs.rmSync(outsideToolDir, { recursive: true, force: true });
   assert.strictEqual(
     toolsRunner.requiresApproval('run_terminal_command', { command: 'Remove-Item -Recurse -Force build' }),
     true
@@ -566,14 +681,37 @@ async function run() {
     /Excluded/
   );
 
+  const contextSearchMessages = [];
+  const failedContextSearch = Object.create(SidebarProvider.prototype);
+  failedContextSearch._contextProviders = {
+    async searchProviderItems() {
+      throw new Error('Documentation source unavailable.');
+    }
+  };
+  failedContextSearch.postMessage = (message) => contextSearchMessages.push(message);
+  await failedContextSearch._handleMessage({
+    type: 'searchContextProvider',
+    providerId: 'docs',
+    requestId: 7,
+    query: 'example'
+  });
+  assert.deepStrictEqual(contextSearchMessages[0], {
+    type: 'contextProviderResults',
+    providerId: 'docs',
+    requestId: 7,
+    items: [],
+    error: 'Documentation source unavailable.'
+  });
+
   // 5. SessionManager tests
   const wsState = createMockMemento();
   const sessMgr = new SessionManager(wsState);
-  const s1 = sessMgr.createSession();
+  const s1 = await sessMgr.createSession();
   assert.deepStrictEqual(sessMgr.listSessions(), []);
+  assert.strictEqual(wsState._raw.has('codepilot.sessions.v1'), true);
   await sessMgr.appendMessage(s1.id, { role: 'user', content: 'Explain verifyAuthToken' });
   assert.deepStrictEqual(sessMgr.listSessions().map((session) => session.id), [s1.id]);
-  const s2 = sessMgr.createSession();
+  const s2 = await sessMgr.createSession();
   assert.notStrictEqual(s1.id, s2.id);
   assert.deepStrictEqual(sessMgr.listSessions().map((session) => session.id), [s1.id]);
   const last = sessMgr.getLastNonEmptySession();

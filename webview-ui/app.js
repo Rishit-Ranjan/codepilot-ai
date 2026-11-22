@@ -1576,8 +1576,10 @@
         }
         const items = msg.items || [];
         contextMenuList.innerHTML =
-          items.length === 0
-            ? '<div class="cp-muted" style="padding:8px;">No matching items found.</div>'
+          msg.error
+            ? `<div class="cp-muted" style="padding:8px;">${escapeHtml(msg.error)}</div>`
+            : items.length === 0
+              ? '<div class="cp-muted" style="padding:8px;">No matching items found.</div>'
             : items
                 .map(
                   (it) => `

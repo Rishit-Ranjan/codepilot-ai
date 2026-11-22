@@ -175,7 +175,7 @@ async function activate(context) {
   // Command: New Session
   context.subscriptions.push(
     commands.registerCommand('codepilot.newSession', async () => {
-      sessionManager.createSession();
+      await sessionManager.createSession();
       await sidebarProvider.pushFullState();
     })
   );
@@ -215,7 +215,6 @@ async function activate(context) {
   );
 
   // Inline Autocomplete Provider (ghost text)
-  let autocompleteTimer = null;
   context.subscriptions.push(
     languages.registerInlineCompletionItemProvider(
       { pattern: '**' },
@@ -226,11 +225,21 @@ async function activate(context) {
           const acModel = configManager.getModelForRole('autocomplete');
           if (!acModel) return [];
 
-          if (autocompleteTimer) clearTimeout(autocompleteTimer);
-          await new Promise((r) => {
-            autocompleteTimer = setTimeout(r, profile.settings.autocompleteDelayMs || 350);
+          const wasCancelled = await new Promise((resolve) => {
+            let subscription;
+            let settled = false;
+            const finish = (cancelled) => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              subscription?.dispose();
+              resolve(cancelled);
+            };
+            const timer = setTimeout(() => finish(false), profile.settings.autocompleteDelayMs || 350);
+            subscription = token.onCancellationRequested(() => finish(true));
+            if (token.isCancellationRequested) finish(true);
           });
-          if (token.isCancellationRequested) return [];
+          if (wasCancelled || token.isCancellationRequested) return [];
 
           const prefixRange = new Range(
             new Position(Math.max(0, position.line - 30), 0),
@@ -240,7 +249,7 @@ async function activate(context) {
           if (prefix.trim().length < 5) return [];
 
           const controller = new AbortController();
-          token.onCancellationRequested(() => controller.abort());
+          const cancellation = token.onCancellationRequested(() => controller.abort());
 
           try {
             const promptInstructions = buildActivePromptInstructions(profile, prefix);
@@ -266,6 +275,8 @@ async function activate(context) {
             return [new InlineCompletionItem(suggestion, new Range(position, position))];
           } catch (_) {
             return [];
+          } finally {
+            cancellation.dispose();
           }
         }
       }

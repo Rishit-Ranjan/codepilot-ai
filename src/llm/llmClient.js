@@ -388,23 +388,41 @@ class LLMClient {
       .filter((m) => m.role === 'system')
       .map((m) => m.content)
       .join('\n\n');
-    const chatMsgs = messages
-      .filter((m) => m.role !== 'system')
-      .map((m) => {
-        if (m.role === 'tool') {
-          return {
-            role: 'user',
-            content: [
-              {
-                type: 'tool_result',
-                tool_use_id: m.tool_call_id,
-                content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
-              }
-            ]
-          };
+    const chatMsgs = [];
+    for (const message of messages) {
+      if (message.role === 'system') continue;
+      if (message.role === 'assistant' && Array.isArray(message.tool_calls)) {
+        const content = [];
+        if (message.content) content.push({ type: 'text', text: message.content });
+        for (const toolCall of message.tool_calls) {
+          content.push({
+            type: 'tool_use',
+            id: toolCall.id,
+            name: toolCall.function?.name || '',
+            input: safeJsonParse(toolCall.function?.arguments, {})
+          });
         }
-        return { role: m.role, content: m.content };
-      });
+        chatMsgs.push({ role: 'assistant', content });
+      } else if (message.role === 'tool') {
+        const result = {
+          type: 'tool_result',
+          tool_use_id: message.tool_call_id,
+          content: typeof message.content === 'string' ? message.content : JSON.stringify(message.content)
+        };
+        const previous = chatMsgs[chatMsgs.length - 1];
+        if (
+          previous?.role === 'user' &&
+          Array.isArray(previous.content) &&
+          previous.content.every((block) => block.type === 'tool_result')
+        ) {
+          previous.content.push(result);
+        } else {
+          chatMsgs.push({ role: 'user', content: [result] });
+        }
+      } else {
+        chatMsgs.push({ role: message.role, content: message.content });
+      }
+    }
 
     const body = {
       model,
@@ -459,6 +477,37 @@ class LLMClient {
     const reader = res.body.getReader();
     const decoder = new TextDecoder('utf-8');
     let buffer = '';
+    const consumeLine = (line) => {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data:')) return;
+      const data = trimmed.slice(5).trim();
+      try {
+        const evt = JSON.parse(data);
+        if (evt.type === 'content_block_start' && evt.content_block?.type === 'tool_use') {
+          currentTool = {
+            id: evt.content_block.id,
+            name: evt.content_block.name,
+            rawJson: ''
+          };
+        } else if (evt.type === 'content_block_delta') {
+          if (evt.delta?.type === 'text_delta' && evt.delta.text) {
+            fullContent += evt.delta.text;
+            if (onToken) onToken(evt.delta.text);
+          } else if (evt.delta?.type === 'input_json_delta' && currentTool) {
+            currentTool.rawJson += evt.delta.partial_json || '';
+          }
+        } else if (evt.type === 'content_block_stop' && currentTool) {
+          toolCalls.push({
+            id: currentTool.id,
+            name: currentTool.name,
+            arguments: safeJsonParse(currentTool.rawJson, {})
+          });
+          currentTool = null;
+        }
+      } catch (_) {
+        // Ignore partial SSE lines.
+      }
+    };
 
     while (true) {
       const { value, done } = await reader.read();
@@ -467,38 +516,10 @@ class LLMClient {
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data:')) continue;
-        const data = trimmed.slice(5).trim();
-        try {
-          const evt = JSON.parse(data);
-          if (evt.type === 'content_block_start' && evt.content_block?.type === 'tool_use') {
-            currentTool = {
-              id: evt.content_block.id,
-              name: evt.content_block.name,
-              rawJson: ''
-            };
-          } else if (evt.type === 'content_block_delta') {
-            if (evt.delta?.type === 'text_delta' && evt.delta.text) {
-              fullContent += evt.delta.text;
-              if (onToken) onToken(evt.delta.text);
-            } else if (evt.delta?.type === 'input_json_delta' && currentTool) {
-              currentTool.rawJson += evt.delta.partial_json || '';
-            }
-          } else if (evt.type === 'content_block_stop' && currentTool) {
-            toolCalls.push({
-              id: currentTool.id,
-              name: currentTool.name,
-              arguments: safeJsonParse(currentTool.rawJson, {})
-            });
-            currentTool = null;
-          }
-        } catch (_) {
-          // Ignore partial SSE lines
-        }
-      }
+      for (const line of lines) consumeLine(line);
     }
+    buffer += decoder.decode();
+    if (buffer.trim()) consumeLine(buffer);
 
     return { content: fullContent, toolCalls };
   }
@@ -521,12 +542,51 @@ class LLMClient {
       .filter((m) => m.role === 'system')
       .map((m) => m.content)
       .join('\n\n');
-    const contents = messages
-      .filter((m) => m.role !== 'system')
-      .map((m) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }]
-      }));
+    const contents = [];
+    const toolNames = new Map();
+    let lastWasToolResponse = false;
+    for (const message of messages) {
+      if (message.role === 'system') continue;
+      if (message.role === 'assistant' && Array.isArray(message.tool_calls)) {
+        const parts = [];
+        if (message.content) parts.push({ text: message.content });
+        for (const toolCall of message.tool_calls) {
+          const name = toolCall.function?.name || '';
+          toolNames.set(toolCall.id, name);
+          parts.push({
+            functionCall: {
+              name,
+              args: safeJsonParse(toolCall.function?.arguments, {})
+            }
+          });
+        }
+        contents.push({ role: 'model', parts });
+        lastWasToolResponse = false;
+      } else if (message.role === 'tool') {
+        const name = toolNames.get(message.tool_call_id) || '';
+        const part = {
+          functionResponse: {
+            name,
+            response: {
+              result: typeof message.content === 'string' ? message.content : JSON.stringify(message.content)
+            }
+          }
+        };
+        const previous = contents[contents.length - 1];
+        if (lastWasToolResponse && previous?.role === 'user') {
+          previous.parts.push(part);
+        } else {
+          contents.push({ role: 'user', parts: [part] });
+        }
+        lastWasToolResponse = true;
+      } else {
+        contents.push({
+          role: message.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: typeof message.content === 'string' ? message.content : JSON.stringify(message.content) }]
+        });
+        lastWasToolResponse = false;
+      }
+    }
 
     const body = {
       contents,

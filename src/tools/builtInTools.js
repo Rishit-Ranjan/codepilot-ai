@@ -7,6 +7,14 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
+function isPathInside(root, target) {
+  const relativePath = path.relative(root, target);
+  return relativePath === '' ||
+    (relativePath !== '..' &&
+      !relativePath.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relativePath));
+}
+
 const TOOL_SCHEMAS = [
   {
     type: 'function',
@@ -248,13 +256,31 @@ class BuiltInToolsRunner {
     return dangerousPatterns.some((pattern) => pattern.test(normalized));
   }
 
-  _resolveSafePath(relPath) {
+  async _resolveSafePath(relPath) {
     const root = this._vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!root) throw new Error('No workspace folder is open.');
     const resolved = path.resolve(root, relPath || '.');
     const normalizedRoot = path.resolve(root);
-    if (resolved !== normalizedRoot && !resolved.startsWith(normalizedRoot + path.sep)) {
+    if (!isPathInside(normalizedRoot, resolved)) {
       throw new Error(`Access denied outside workspace root: ${relPath}`);
+    }
+    const realRoot = await fs.promises.realpath(normalizedRoot);
+    let existingPath = resolved;
+    while (true) {
+      let realPath;
+      try {
+        realPath = await fs.promises.realpath(existingPath);
+      } catch (err) {
+        if (err.code !== 'ENOENT' && err.code !== 'ENOTDIR') throw err;
+        const parentPath = path.dirname(existingPath);
+        if (parentPath === existingPath) throw err;
+        existingPath = parentPath;
+        continue;
+      }
+      if (!isPathInside(realRoot, realPath)) {
+        throw new Error(`Access denied outside workspace root: ${relPath}`);
+      }
+      break;
     }
     return { root: normalizedRoot, fullPath: resolved };
   }
@@ -267,13 +293,13 @@ class BuiltInToolsRunner {
 
     switch (toolName) {
       case 'read_file': {
-        const { fullPath } = this._resolveSafePath(args.path);
+        const { fullPath } = await this._resolveSafePath(args.path);
         const content = await fs.promises.readFile(fullPath, 'utf8');
         return content.slice(0, 16000);
       }
 
       case 'create_new_file': {
-        const { fullPath } = this._resolveSafePath(args.path);
+        const { fullPath } = await this._resolveSafePath(args.path);
         if (fs.existsSync(fullPath)) {
           throw new Error(`File already exists: ${args.path}`);
         }
@@ -283,7 +309,7 @@ class BuiltInToolsRunner {
       }
 
       case 'edit_existing_file': {
-        const { fullPath } = this._resolveSafePath(args.path);
+        const { fullPath } = await this._resolveSafePath(args.path);
         const content = await fs.promises.readFile(fullPath, 'utf8');
         if (!content.includes(args.oldText)) {
           throw new Error(`Could not find target oldText in ${args.path}`);
@@ -294,7 +320,7 @@ class BuiltInToolsRunner {
       }
 
       case 'run_terminal_command': {
-        const { root } = this._resolveSafePath('.');
+        const { root } = await this._resolveSafePath('.');
         const command = String(args.command || '').trim();
         if (!command) {
           throw new Error('Terminal command cannot be empty.');
@@ -323,7 +349,7 @@ class BuiltInToolsRunner {
       }
 
       case 'file_glob_search': {
-        const { root } = this._resolveSafePath('.');
+        const { root } = await this._resolveSafePath('.');
         const uris = await this._vscode.workspace.findFiles(
           args.pattern || '**/*',
           '{**/node_modules/**,**/.git/**}',
@@ -333,7 +359,7 @@ class BuiltInToolsRunner {
       }
 
       case 'grep_search': {
-        const { root } = this._resolveSafePath('.');
+        const { root } = await this._resolveSafePath('.');
         const hits = this._indexer.searchCodebase(String(args.query || ''), 12);
         if (hits.length > 0) {
           return hits
@@ -344,11 +370,22 @@ class BuiltInToolsRunner {
       }
 
       case 'view_diff': {
-        const { root } = this._resolveSafePath('.');
-        const { stdout } = await execAsync('git diff --no-color', { cwd: root, timeout: 5000 }).catch(
-          () => ({ stdout: '' })
-        );
-        return stdout ? stdout.slice(0, 12000) : 'No uncommitted git diff.';
+        const { root } = await this._resolveSafePath('.');
+        let stdout = '';
+        try {
+          ({ stdout } = await execAsync('git diff HEAD --no-color', { cwd: root, timeout: 5000 }));
+        } catch (headError) {
+          try {
+            const [staged, unstaged] = await Promise.all([
+              execAsync('git diff --cached --no-color', { cwd: root, timeout: 5000 }),
+              execAsync('git diff --no-color', { cwd: root, timeout: 5000 })
+            ]);
+            stdout = `${staged.stdout}${unstaged.stdout}`;
+          } catch (fallbackError) {
+            throw new Error(`Unable to read Git diff: ${fallbackError.message || headError.message}`);
+          }
+        }
+        return stdout ? stdout.slice(0, 12000) : 'No tracked uncommitted Git changes.';
       }
 
       case 'read_currently_open_file': {
@@ -358,7 +395,7 @@ class BuiltInToolsRunner {
       }
 
       case 'ls': {
-        const { fullPath } = this._resolveSafePath(args.dir || '.');
+        const { fullPath } = await this._resolveSafePath(args.dir || '.');
         const entries = await fs.promises.readdir(fullPath, { withFileTypes: true });
         return entries
           .map((e) => `${e.isDirectory() ? '[dir]' : '[file]'} ${e.name}`)
@@ -376,7 +413,7 @@ class BuiltInToolsRunner {
       }
 
       case 'view_problems': {
-        const { root } = this._resolveSafePath('.');
+        const { root } = await this._resolveSafePath('.');
         const diags = this._vscode.languages.getDiagnostics();
         const out = [];
         for (const [uri, list] of diags) {

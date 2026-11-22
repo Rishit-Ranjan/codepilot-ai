@@ -11,6 +11,7 @@ class SessionManager {
     this._state = workspaceState;
     this._sessions = this._load();
     this._activeSessionId = this._sessions[0]?.id || null;
+    this._saveQueue = Promise.resolve();
   }
 
   _load() {
@@ -22,10 +23,18 @@ class SessionManager {
     if (this._sessions.length > MAX_SESSIONS) {
       this._sessions = this._sessions.slice(0, MAX_SESSIONS);
     }
-    await this._state.update(SESSIONS_KEY, this._sessions);
+    const snapshot = this._sessions.map((session) => ({
+      ...session,
+      messages: [...session.messages]
+    }));
+    const savePromise = this._saveQueue
+      .catch(() => {})
+      .then(() => this._state.update(SESSIONS_KEY, snapshot));
+    this._saveQueue = savePromise;
+    await savePromise;
   }
 
-  createSession(title = 'New Session') {
+  async createSession(title = 'New Session') {
     const session = {
       id: `sess-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       title,
@@ -35,16 +44,16 @@ class SessionManager {
     };
     this._sessions.unshift(session);
     this._activeSessionId = session.id;
-    this._save();
+    await this._save();
     return session;
   }
 
-  getActiveSession() {
+  async getActiveSession() {
     if (!this._activeSessionId) {
-      return this.createSession();
+      return await this.createSession();
     }
     const found = this._sessions.find((s) => s.id === this._activeSessionId);
-    return found || this.createSession();
+    return found || await this.createSession();
   }
 
   getLastNonEmptySession() {

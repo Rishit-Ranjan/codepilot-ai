@@ -656,10 +656,11 @@ textarea:focus-visible,
 .cp-code-block pre {
   margin: 0;
   padding: 9px;
-  overflow-x: auto;
-  white-space: pre-wrap;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre;
   overflow-wrap: anywhere;
-  word-break: break-word;
+  word-break: normal;
   font-family: var(--vscode-editor-font-family, monospace);
   font-size: 12px;
   line-height: 1.55;

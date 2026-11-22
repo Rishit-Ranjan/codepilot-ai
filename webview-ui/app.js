@@ -562,9 +562,18 @@
     const profile = config.profile;
 
     const modeControls = {
-      chat: { icon: '&#128172;', label: 'Chat' },
-      plan: { icon: '&#128221;', label: 'Plan' },
-      agent: { icon: '&#10024;', label: 'Agent' }
+      chat: {
+        icon: '<svg class="cp-mode-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h11v8h-6l-3 3v-3h-2z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M5 6h6M5 8h4" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>',
+        label: 'Chat'
+      },
+      plan: {
+        icon: '<svg class="cp-mode-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h7l2 2v11h-9z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M10.5 1.5v3h3M5.5 7h5M5.5 9.5h5M5.5 12h3" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>',
+        label: 'Plan'
+      },
+      agent: {
+        icon: '<svg class="cp-mode-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l1.25 3.25L12.5 6l-3.25 1.25L8 10.5l-1.25-3.25L3.5 6l3.25-1.25zM12.5 10l.65 1.85L15 12.5l-1.85.65L12.5 15l-.65-1.85L10 12.5l1.85-.65z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>',
+        label: 'Agent'
+      }
     };
     const selectedMode = modeControls[mode] || modeControls.chat;
     document.getElementById('label-mode').innerHTML =

@@ -92,19 +92,43 @@
             <!-- Mode Picker -->
             <div class="cp-dropdown-wrap">
               <button id="btn-mode-picker" class="cp-pill-btn" title="Select Mode (Ctrl+.)">
-                <span id="label-mode">Chat</span> &#9662;
+                <span id="label-mode">
+                  <svg class="cp-mode-icon" viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M2.5 2.5h11v8h-6l-3 3v-3h-2z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+                    <path d="M5 6h6M5 8h4" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+                  </svg>
+                  Chat
+                </span>
+                &#9662;
               </button>
               <div id="menu-mode-picker" class="cp-popover hidden">
                 <button class="cp-menu-item" data-mode="chat">
-                  <span>&#128172; Chat</span>
+                  <span class="cp-mode-option">
+                    <svg class="cp-mode-icon" viewBox="0 0 16 16" aria-hidden="true">
+                      <path d="M2.5 2.5h11v8h-6l-3 3v-3h-2z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+                      <path d="M5 6h6M5 8h4" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+                    </svg>
+                    Chat
+                  </span>
                   <span class="cp-kbd">Ctrl+L</span>
                 </button>
                 <button class="cp-menu-item" data-mode="plan">
-                  <span>&#128221; Plan</span>
+                  <span class="cp-mode-option">
+                    <svg class="cp-mode-icon" viewBox="0 0 16 16" aria-hidden="true">
+                      <path d="M3.5 1.5h7l2 2v11h-9z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+                      <path d="M10.5 1.5v3h3M5.5 7h5M5.5 9.5h5M5.5 12h3" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+                    </svg>
+                    Plan
+                  </span>
                   <span class="cp-muted">Read-only plan</span>
                 </button>
                 <button class="cp-menu-item" data-mode="agent">
-                  <span>&#10024; Agent</span>
+                  <span class="cp-mode-option">
+                    <svg class="cp-mode-icon" viewBox="0 0 16 16" aria-hidden="true">
+                      <path d="M8 1.5l1.25 3.25L12.5 6l-3.25 1.25L8 10.5l-1.25-3.25L3.5 6l3.25-1.25zM12.5 10l.65 1.85L15 12.5l-1.85.65L12.5 15l-.65-1.85L10 12.5l1.85-.65z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/>
+                    </svg>
+                    Agent
+                  </span>
                   <span class="cp-muted">Uses tools</span>
                 </button>
                 <div class="cp-popover-footer">Ctrl+. for next mode</div>

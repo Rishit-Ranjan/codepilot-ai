@@ -265,6 +265,20 @@ textarea:focus-visible,
   border-color: var(--fg-muted);
 }
 
+#label-mode,
+.cp-mode-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cp-mode-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  vertical-align: -2px;
+}
+
 .cp-chips {
   display: flex;
   flex-wrap: wrap;

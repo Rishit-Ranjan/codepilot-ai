@@ -568,7 +568,7 @@ textarea:focus-visible,
   padding: 8px 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 14px;
   container-type: inline-size;
 }
 
@@ -576,7 +576,7 @@ textarea:focus-visible,
   box-sizing: border-box;
   min-width: 0;
   max-width: 100%;
-  padding: 9px 10px;
+  padding: 12px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--surface);

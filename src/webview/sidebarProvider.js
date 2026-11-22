@@ -287,6 +287,10 @@ class SidebarProvider {
           await this._applyCodeToActiveEditor(msg.code);
           break;
 
+        case 'editCodeBlock':
+          await this._editCodeBlock(msg.code);
+          break;
+
         case 'copyCodeBlock':
           await this._vscode.env.clipboard.writeText(String(msg.code || ''));
           this._vscode.window.setStatusBarMessage('CodePilot AI: Copied to clipboard', 2000);
@@ -828,6 +832,77 @@ class SidebarProvider {
       editBuilder.insert(editor.selection.active, code);
     });
     this._vscode.window.setStatusBarMessage('CodePilot AI: Inserted code at cursor', 2500);
+  }
+
+  async _editCodeBlock(code) {
+    const editor = this._vscode.window.activeTextEditor;
+    if (!editor) {
+      this._vscode.window.showWarningMessage('CodePilot AI: Open a file in the editor to edit code.');
+      return;
+    }
+
+    const instruction = await this._vscode.window.showInputBox({
+      prompt: 'CodePilot AI: Describe how to edit this code',
+      placeHolder: 'e.g., Add validation and JSDoc comments'
+    });
+    if (!instruction) return;
+
+    const editModel = this._config.getModelForRole('edit') || this._config.getModelForRole('chat');
+    if (!editModel) {
+      this._vscode.window.showErrorMessage('CodePilot AI: No Edit or Chat model configured.');
+      return;
+    }
+
+    await this._vscode.window.withProgress(
+      {
+        location: this._vscode.ProgressLocation.Notification,
+        title: `CodePilot AI: Editing with ${editModel.title}...`,
+        cancellable: true
+      },
+      async (_progress, token) => {
+        const controller = new AbortController();
+        token.onCancellationRequested(() => controller.abort());
+
+        try {
+          const result = await this._llm.chat({
+            modelConfig: editModel,
+            stream: false,
+            temperature: 0.1,
+            signal: controller.signal,
+            messages: [
+              {
+                role: 'system',
+                content: 'You are an expert code editor. Apply the instruction to the provided code. Return ONLY the transformed code without markdown fences or commentary.'
+              },
+              {
+                role: 'user',
+                content: `Instruction: ${instruction}\n\nCode:\n${code}`
+              }
+            ]
+          });
+
+          const cleaned = result.content
+            .replace(/^```[\w-]*\r?\n/, '')
+            .replace(/\r?\n```\s*$/, '')
+            .trim();
+
+          if (!cleaned) return;
+
+          await editor.edit((editBuilder) => {
+            if (editor.selection.isEmpty) {
+              editBuilder.insert(editor.selection.active, cleaned);
+            } else {
+              editBuilder.replace(editor.selection, cleaned);
+            }
+          });
+          this._vscode.window.setStatusBarMessage('CodePilot AI: Code edited', 2500);
+        } catch (error) {
+          if (!controller.signal.aborted) {
+            this._vscode.window.showErrorMessage(`CodePilot AI: ${error.message || 'Could not edit code.'}`);
+          }
+        }
+      }
+    );
   }
 
   _getHtml(webview) {

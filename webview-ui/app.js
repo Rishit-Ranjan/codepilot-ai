@@ -437,6 +437,7 @@
             <span>${lang}</span>
             <div class="cp-code-actions">
               <button class="cp-mini-btn" data-copy-code="${encoded}">Copy</button>
+              <button class="cp-mini-btn" data-edit-code="${encoded}">Edit</button>
               <button class="cp-mini-btn" data-apply-code="${encoded}">Apply</button>
             </div>
           </div>
@@ -479,6 +480,11 @@
     container.querySelectorAll('button[data-apply-code]').forEach((btn) => {
       btn.addEventListener('click', () => {
         vscode.postMessage({ type: 'applyCodeBlock', code: decodeURIComponent(btn.dataset.applyCode) });
+      });
+    });
+    container.querySelectorAll('button[data-edit-code]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        vscode.postMessage({ type: 'editCodeBlock', code: decodeURIComponent(btn.dataset.editCode) });
       });
     });
   }

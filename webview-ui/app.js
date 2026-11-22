@@ -453,10 +453,21 @@
   }
 
   function formatInlineText(str) {
-    return escapeHtml(str)
+    const formatLine = (line) => escapeHtml(line)
       .replace(/`([^`]+)`/g, '<code>$1</code>')
-      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/\n/g, '<br/>');
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+    return String(str || '')
+      .split('\n')
+      .map((line, index, lines) => {
+        const heading = line.match(/^(#{1,6})\s+(.+)$/);
+        if (heading) {
+          const level = heading[1].length;
+          return `<div class="cp-heading cp-heading-${level}">${formatLine(heading[2])}</div>`;
+        }
+        return formatLine(line) + (index < lines.length - 1 ? '<br/>' : '');
+      })
+      .join('');
   }
 
   function bindCodeButtons(container) {

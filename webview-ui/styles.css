@@ -618,6 +618,19 @@ textarea:focus-visible,
 .cp-msg-body p:first-child { margin-top: 0; }
 .cp-msg-body p:last-child { margin-bottom: 0; }
 
+.cp-heading {
+  font-weight: 700;
+  line-height: 1.35;
+  margin: 0.55em 0 0.35em;
+}
+
+.cp-heading-1 { font-size: 1.4em; }
+.cp-heading-2 { font-size: 1.25em; }
+.cp-heading-3 { font-size: 1.12em; }
+.cp-heading-4 { font-size: 1.05em; }
+.cp-heading-5,
+.cp-heading-6 { font-size: 1em; }
+
 .cp-code-block {
   margin: 8px 0;
   border: 1px solid var(--border);

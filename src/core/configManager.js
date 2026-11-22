@@ -67,7 +67,7 @@ const DEFAULT_BUILTIN_TOOLS = [
   },
   {
     name: 'read_terminal',
-    description: 'Read recent output or command history from the integrated terminal.',
+    description: 'List the open integrated terminal names. VS Code does not expose existing terminal scrollback to extensions.',
     permission: 'automatic'
   },
   {

@@ -12,6 +12,7 @@ import { CodebaseIndexer } from '../src/indexing/codebaseIndexer.js';
 import { LLMClient } from '../src/llm/llmClient.js';
 import { BuiltInToolsRunner } from '../src/tools/builtInTools.js';
 import { SidebarProvider } from '../src/webview/sidebarProvider.js';
+import { ContextProviderService } from '../src/context/contextProviders.js';
 
 function createMockSecretStorage() {
   const store = new Map();
@@ -439,6 +440,104 @@ async function run() {
   assert.ok(docChunks >= 1);
   const docHits = indexer.searchDocs('SecretStorage', 3);
   assert.ok(docHits.length > 0);
+
+  const authFile = path.join(tmpRoot, 'src', 'authService.js');
+  const contextVscode = {
+    workspace: {
+      workspaceFolders: [{ uri: { fsPath: tmpRoot } }],
+      findFiles: async () => [{ fsPath: authFile }, { fsPath: docFile }]
+    },
+    commands: {
+      executeCommand: async () => [{
+        name: 'verifyAuthToken',
+        location: {
+          uri: { fsPath: authFile },
+          range: { start: { line: 0 } }
+        }
+      }]
+    },
+    window: {
+      activeTextEditor: null,
+      activeTerminal: { name: 'PowerShell' }
+    },
+    languages: {
+      getDiagnostics: () => [[
+        { fsPath: authFile },
+        [{ severity: 1, range: { start: { line: 1 } }, message: 'Test warning' }]
+      ]]
+    }
+  };
+  const contextProvider = new ContextProviderService(contextVscode, indexer, cfgMgr);
+  const fileItems = await contextProvider.searchProviderItems('files', 'authService');
+  assert.strictEqual(fileItems.length, 1);
+  const fileContext = await contextProvider.resolveAttachments(
+    [{ provider: 'files', itemId: fileItems[0].id, label: fileItems[0].label }],
+    ''
+  );
+  assert.ok(fileContext[0].content.includes('verifyAuthToken'));
+  const outsideFileContext = await contextProvider.resolveAttachments(
+    [{ provider: 'files', itemId: '../outside.txt', label: 'outside.txt' }],
+    ''
+  );
+  assert.ok(outsideFileContext[0].content.includes('no longer inside an open workspace'));
+
+  const folderItems = await contextProvider.searchProviderItems('folder');
+  assert.ok(folderItems.some((item) => item.description === 'src'));
+  const folderContext = await contextProvider.resolveAttachments(
+    [{ provider: 'folder', itemId: 'src', label: 'src' }],
+    ''
+  );
+  assert.ok(folderContext[0].content.includes('authService.js'));
+
+  const codeItems = await contextProvider.searchProviderItems('code', 'verifyAuthToken');
+  const codeContext = await contextProvider.resolveAttachments(
+    [{ provider: 'code', itemId: codeItems[0].id, label: codeItems[0].label }],
+    ''
+  );
+  assert.ok(codeContext[0].content.includes('verifyAuthToken'));
+  assert.ok(codeContext[0].title.includes('authService.js'));
+
+  const noEditorContext = await contextProvider.resolveAttachments(
+    [{ provider: 'current_file', label: 'Current File' }],
+    ''
+  );
+  assert.ok(noEditorContext[0].content.includes('No active editor'));
+
+  const diffContext = await contextProvider.resolveAttachments(
+    [{ provider: 'git_diff', label: 'Git Diff' }],
+    ''
+  );
+  assert.ok(diffContext[0].content.includes('Git') || diffContext[0].content.includes('uncommitted'));
+
+  const problemContext = await contextProvider.resolveAttachments(
+    [{ provider: 'problems', label: 'Problems' }],
+    ''
+  );
+  assert.ok(problemContext[0].content.includes('[Warning] Test warning'));
+
+  const terminalContext = await contextProvider.resolveAttachments(
+    [{ provider: 'terminal', label: 'Terminal' }],
+    ''
+  );
+  assert.ok(terminalContext[0].content.includes('does not expose existing terminal scrollback'));
+
+  const ruleContext = await contextProvider.resolveAttachments(
+    [{ provider: 'rules', label: 'Rules' }],
+    ''
+  );
+  assert.ok(ruleContext[0].content.includes('Clean Code Standards'));
+
+  const codebaseContext = await contextProvider.resolveAttachments(
+    [{ provider: 'codebase', label: 'Codebase' }],
+    'verifyAuthToken'
+  );
+  assert.ok(codebaseContext[0].content.includes('verifyAuthToken'));
+
+  const docsContext = await contextProvider.resolveAttachments(
+    [{ provider: 'docs', label: 'Docs' }],
+    'SecretStorage'
+  );
+  assert.ok(docsContext[0].content.includes('SecretStorage'));
 
   // 4. BuiltInToolsRunner sandboxing & permissions
   const mockVscode = {

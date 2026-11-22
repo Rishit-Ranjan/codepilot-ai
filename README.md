@@ -156,6 +156,8 @@ The composer supports:
 
 For `@Codebase` and `@Docs`, run the index operation from settings or use the re-index command. The indexer respects workspace ignore rules and stores generated index data in extension storage.
 
+`@Terminal` identifies the active terminal, but does not include its scrollback: the VS Code API does not expose existing terminal output to extensions.
+
 ## Rules, Skills, and Profiles
 
 ### Rules

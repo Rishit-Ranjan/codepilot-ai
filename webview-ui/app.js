@@ -345,6 +345,14 @@
     menuContext.classList.remove('hidden');
   }
 
+  function clearContextTrigger() {
+    if (chatInput.value.endsWith('@')) {
+      chatInput.value = chatInput.value.slice(0, -1);
+      chatInput.setSelectionRange(chatInput.value.length, chatInput.value.length);
+    }
+    chatInput.focus();
+  }
+
   document.getElementById('btn-at-context').addEventListener('click', (e) => {
     e.stopPropagation();
     if (menuContext.classList.contains('hidden')) {
@@ -395,6 +403,7 @@
           vscode.postMessage({ type: 'searchContextProvider', providerId: pid, query: '' });
         } else {
           const prov = providers.find((x) => x.id === pid);
+          clearContextTrigger();
           addAttachment({ provider: pid, label: prov ? prov.label : pid });
           menuContext.classList.add('hidden');
         }
@@ -1550,6 +1559,7 @@
         contextMenuList.querySelectorAll('button[data-pick-item]').forEach((btn) => {
           btn.addEventListener('click', (e) => {
             e.stopPropagation();
+            clearContextTrigger();
             addAttachment({
               provider: msg.providerId,
               itemId: btn.dataset.pickItem,

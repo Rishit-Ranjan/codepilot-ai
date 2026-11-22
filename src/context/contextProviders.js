@@ -1,7 +1,7 @@
 'use strict';
 
 import { existsSync, promises } from 'fs';
-import { relative, basename, dirname, resolve } from 'path';
+import { relative, basename, dirname, resolve, isAbsolute, sep } from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 
@@ -13,7 +13,7 @@ const CONTEXT_PROVIDERS = [
   { id: 'folder', label: 'Folder', description: 'Summarize directory structure', searchable: true, icon: 'folder' },
   { id: 'current_file', label: 'Current File', description: 'Attach the active editor file', searchable: false, icon: 'at' },
   { id: 'git_diff', label: 'Git Diff', description: 'Attach current uncommitted git diff', searchable: false, icon: 'diff' },
-  { id: 'terminal', label: 'Terminal', description: 'Attach recent terminal context', searchable: false, icon: 'terminal' },
+  { id: 'terminal', label: 'Terminal', description: 'Attach the active terminal name; VS Code does not expose its scrollback', searchable: false, icon: 'terminal' },
   { id: 'problems', label: 'Problems', description: 'Attach active workspace diagnostics', searchable: false, icon: 'warning' },
   { id: 'rules', label: 'Rules', description: 'Attach active CodePilot AI rules', searchable: false, icon: 'pencil' },
   { id: 'codebase', label: 'Codebase', description: 'Semantic & BM25 search over @codebase index', searchable: false, icon: 'database' },
@@ -37,6 +37,10 @@ class ContextProviderService {
     return this._vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
   }
 
+  getWorkspaceRoots() {
+    return (this._vscode.workspace.workspaceFolders || []).map((folder) => folder.uri.fsPath);
+  }
+
   /**
    * Search items for searchable context providers (@Files, @Code, @Folder).
    * @param {string} providerId
@@ -55,10 +59,16 @@ class ContextProviderService {
       );
       return uris
         .map((u) => {
-          const rel = relative(root, u.fsPath).replace(/\\/g, '/');
-          return { id: rel, label: basename(rel), description: rel, path: u.fsPath };
+          const rel = getRelativePathWithinRoot(root, u.fsPath);
+          if (rel === null) return null;
+          return {
+            id: JSON.stringify({ root, path: rel }),
+            label: basename(rel),
+            description: rel,
+            path: u.fsPath
+          };
         })
-        .filter((item) => !q || item.description.toLowerCase().includes(q))
+        .filter((item) => item && (!q || item.description.toLowerCase().includes(q)))
         .slice(0, 25);
     }
 
@@ -70,7 +80,9 @@ class ContextProviderService {
         200
       );
       for (const u of uris) {
-        const relDir = dirname(relative(root, u.fsPath)).replace(/\\/g, '/');
+        const withinRoot = getRelativePathWithinRoot(root, u.fsPath);
+        if (withinRoot === null) continue;
+        const relDir = dirname(withinRoot).replace(/\\/g, '/');
         if (relDir && relDir !== '.') dirs.add(relDir);
       }
       return Array.from(dirs)
@@ -86,20 +98,33 @@ class ContextProviderService {
           q || ''
         );
         if (Array.isArray(symbols)) {
-          return symbols.slice(0, 25).map((s) => ({
-            id: `${s.location.uri.fsPath}:${s.location.range.start.line}`,
-            label: s.name,
-            description: `${relative(root, s.location.uri.fsPath)}:${s.location.range.start.line + 1}`,
-            path: s.location.uri.fsPath,
-            line: s.location.range.start.line
-          }));
+          return symbols
+            .map((symbol) => {
+              const filePath = symbol.location.uri.fsPath;
+              const rel = getRelativePathWithinRoot(root, filePath);
+              if (rel === null) return null;
+              const line = symbol.location.range.start.line;
+              return {
+                id: JSON.stringify({ root, path: rel, line }),
+                label: symbol.name,
+                description: `${rel}:${line + 1}`,
+                path: filePath,
+                line
+              };
+            })
+            .filter(Boolean)
+            .slice(0, 25);
         }
       } catch (_) {
         // Fallback to indexed symbols
       }
       const hits = this._indexer.searchCodebase(q || 'function', 15);
       return hits.map((h) => ({
-        id: `${h.filePath}:${h.startLine}`,
+        id: JSON.stringify({
+          root,
+          path: h.filePath,
+          line: Math.max(0, h.startLine - 1)
+        }),
         label: h.symbols?.[0] || basename(h.filePath),
         description: `${h.filePath}:${h.startLine}-${h.endLine}`
       }));
@@ -133,21 +158,39 @@ class ContextProviderService {
                 ? `Selected code in ${rel}:\n\`\`\`${doc.languageId}\n${selection}\n\`\`\``
                 : `File ${rel}:\n\`\`\`${doc.languageId}\n${doc.getText().slice(0, 14000)}\n\`\`\``
             });
+          } else {
+            blocks.push({
+              title: 'Current File',
+              content: 'No active editor file is open.'
+            });
           }
         } else if (att.provider === 'files' && att.itemId && root) {
-          const full = resolve(root, att.itemId);
-          if (full.startsWith(resolve(root)) && existsSync(full)) {
-            const text = await promises.readFile(full, 'utf8');
+          const filePath = resolveWorkspaceAttachment(this.getWorkspaceRoots(), att.itemId);
+          if (filePath && existsSync(filePath)) {
+            const stat = await promises.stat(filePath);
+            if (!stat.isFile()) throw new Error('The selected item is not a file.');
+            if (stat.size > 512 * 1024) throw new Error('The selected file is larger than the 512 KB context limit.');
+            const buffer = await promises.readFile(filePath);
+            if (buffer.includes(0)) throw new Error('The selected file appears to be binary and cannot be attached as text.');
+            const text = buffer.toString('utf8');
             blocks.push({
-              title: `File: ${att.itemId}`,
+              title: `File: ${relative(root, filePath).replace(/\\/g, '/')}`,
               content: `\`\`\`\n${text.slice(0, 14000)}\n\`\`\``
+            });
+          } else {
+            blocks.push({
+              title: `File: ${att.label}`,
+              content: 'The selected file is no longer inside an open workspace folder.'
             });
           }
         } else if (att.provider === 'folder' && root) {
-          const targetDir = att.itemId && att.itemId !== '.' ? resolve(root, att.itemId) : root;
-          if (targetDir.startsWith(resolve(root)) && existsSync(targetDir)) {
+          const targetDir = resolveWorkspaceAttachment(this.getWorkspaceRoots(), att.itemId || '.');
+          if (targetDir && existsSync(targetDir)) {
+            const stat = await promises.stat(targetDir);
+            if (!stat.isDirectory()) throw new Error('The selected item is not a folder.');
             const entries = await promises.readdir(targetDir, { withFileTypes: true });
             const listing = entries
+              .filter((entry) => !['.git', 'node_modules', 'dist', 'build'].includes(entry.name))
               .slice(0, 80)
               .map((e) => `${e.isDirectory() ? '[dir]' : '[file]'} ${e.name}`)
               .join('\n');
@@ -155,15 +198,37 @@ class ContextProviderService {
               title: `Folder: ${att.itemId || '.'}`,
               content: listing
             });
+          } else {
+            blocks.push({
+              title: `Folder: ${att.label}`,
+              content: 'The selected folder is no longer inside an open workspace folder.'
+            });
           }
         } else if (att.provider === 'git_diff' && root) {
-          const { stdout } = await execFileAsync('git', ['diff', '--no-color'], {
-            cwd: root,
-            timeout: 5000
-          }).catch(() => ({ stdout: '' }));
+          let stdout = '';
+          let diffError = '';
+          try {
+            ({ stdout } = await execFileAsync('git', ['diff', 'HEAD', '--no-color'], {
+              cwd: root,
+              timeout: 5000
+            }));
+          } catch (headError) {
+            try {
+              ({ stdout } = await execFileAsync('git', ['diff', '--no-color'], {
+                cwd: root,
+                timeout: 5000
+              }));
+            } catch (fallbackError) {
+              diffError = fallbackError.message || headError.message || 'Git diff is unavailable.';
+            }
+          }
           blocks.push({
             title: 'Git Diff',
-            content: stdout ? `\`\`\`diff\n${stdout.slice(0, 12000)}\n\`\`\`` : 'No uncommitted git diff.'
+            content: stdout
+              ? `\`\`\`diff\n${stdout.slice(0, 12000)}\n\`\`\``
+              : diffError
+                ? `Unable to read Git diff: ${diffError}`
+                : 'No tracked uncommitted Git changes.'
           });
         } else if (att.provider === 'problems') {
           const diags = this._vscode.languages.getDiagnostics();
@@ -171,9 +236,12 @@ class ContextProviderService {
           for (const [uri, list] of diags) {
             if (!list || list.length === 0) continue;
             const rel = root ? relative(root, uri.fsPath) : uri.fsPath;
-            for (const d of list.slice(0, 10)) {
-              lines.push(`${rel}:${d.range.start.line + 1} [${d.severity}] ${d.message}`);
+            for (const d of list) {
+              const severity = ['Error', 'Warning', 'Information', 'Hint'][d.severity] || 'Unknown';
+              lines.push(`${rel}:${d.range.start.line + 1} [${severity}] ${d.message}`);
+              if (lines.length >= 100) break;
             }
+            if (lines.length >= 100) break;
           }
           blocks.push({
             title: 'Workspace Problems',
@@ -184,7 +252,7 @@ class ContextProviderService {
           blocks.push({
             title: 'Terminal',
             content: activeTerm
-              ? `Active terminal: "${activeTerm.name}". Use run_terminal_command or read_terminal in Agent mode for command output.`
+              ? `Active terminal: "${activeTerm.name}". VS Code does not expose existing terminal scrollback to extensions, so this attachment cannot include command output.`
               : 'No active VS Code terminal open.'
           });
         } else if (att.provider === 'rules') {
@@ -260,12 +328,27 @@ class ContextProviderService {
               : 'No matching @docs chunks found.'
           });
         } else if (att.provider === 'code' && att.itemId) {
-          const [filePath] = att.itemId.split(':');
+          const codeRef = parseCodeReference(att.itemId);
+          const filePath = codeRef && resolveWorkspaceAttachment(this.getWorkspaceRoots(), JSON.stringify({
+            root: codeRef.root || root,
+            path: codeRef.path
+          }));
           if (filePath && existsSync(filePath)) {
+            const stat = await promises.stat(filePath);
+            if (!stat.isFile()) throw new Error('The selected symbol path is not a file.');
+            if (stat.size > 512 * 1024) throw new Error('The selected source file is larger than the 512 KB context limit.');
             const text = await promises.readFile(filePath, 'utf8');
+            const lines = text.split(/\r?\n/);
+            const start = Math.max(0, codeRef.line - 30);
+            const end = Math.min(lines.length, codeRef.line + 50);
+            blocks.push({
+              title: `Code Symbol: ${att.label} (${relative(root, filePath)}:${codeRef.line + 1})`,
+              content: `\`\`\`\n${lines.slice(start, end).join('\n').slice(0, 10000)}\n\`\`\``
+            });
+          } else {
             blocks.push({
               title: `Code Symbol: ${att.label}`,
-              content: `\`\`\`\n${text.slice(0, 10000)}\n\`\`\``
+              content: 'The selected symbol is no longer inside an open workspace folder.'
             });
           }
         }
@@ -279,6 +362,52 @@ class ContextProviderService {
 
     return blocks;
   }
+}
+
+function getRelativePathWithinRoot(root, target) {
+  const rel = relative(resolve(root), resolve(target));
+  if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return null;
+  return rel.replace(/\\/g, '/');
+}
+
+function resolveWorkspaceAttachment(workspaceRoots, itemId) {
+  let reference;
+  try {
+    reference = JSON.parse(itemId);
+  } catch (_) {
+    reference = { root: workspaceRoots[0], path: itemId };
+  }
+  if (!reference || typeof reference.root !== 'string' || typeof reference.path !== 'string') return null;
+
+  const workspaceRoot = workspaceRoots.find((candidate) => resolve(candidate) === resolve(reference.root));
+  if (!workspaceRoot) return null;
+  const fullPath = resolve(workspaceRoot, reference.path);
+  return getRelativePathWithinRoot(workspaceRoot, fullPath) === null ? null : fullPath;
+}
+
+function parseCodeReference(itemId) {
+  try {
+    const reference = JSON.parse(itemId);
+    if (
+      typeof reference.root === 'string' &&
+      typeof reference.path === 'string' &&
+      Number.isInteger(reference.line)
+    ) {
+      return reference;
+    }
+  } catch (_) {
+    // Older in-memory selections used a file path and line joined with a colon.
+  }
+
+  const separator = itemId.lastIndexOf(':');
+  if (separator <= 0) return null;
+  const line = Number(itemId.slice(separator + 1));
+  if (!Number.isInteger(line)) return null;
+  return {
+    root: '',
+    path: itemId.slice(0, separator),
+    line
+  };
 }
 
 export { ContextProviderService, CONTEXT_PROVIDERS };

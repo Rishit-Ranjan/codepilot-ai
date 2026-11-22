@@ -130,7 +130,9 @@
   });
   document.getElementById('btn-settings-back').addEventListener('click', () => switchMainView('chat'));
   let sidebarPreference = vscode.getState()?.settingsSidebarCollapsed;
+  let sidebarWidthPreference = vscode.getState()?.settingsSidebarWidth;
   const narrowSidebarQuery = window.matchMedia('(max-width: 420px)');
+  const settingsSidebarResizer = document.getElementById('settings-sidebar-resizer');
 
   function setSettingsSidebarCollapsed(collapsed, remember = false) {
     settingsSidebar.classList.toggle('collapsed', collapsed);
@@ -159,6 +161,83 @@
   settingsSidebarToggle.addEventListener('click', () => {
     setSettingsSidebarCollapsed(!settingsSidebar.classList.contains('collapsed'), true);
   });
+
+  const MIN_SIDEBAR_WIDTH = 142;
+  const MAX_SIDEBAR_WIDTH = 220;
+  const savedSidebarWidth = Number(sidebarWidthPreference);
+  if (Number.isFinite(savedSidebarWidth)) {
+    settingsSidebar.style.setProperty('--sidebar-width', `${Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, savedSidebarWidth))}px`);
+  }
+  updateResizerAria(getSidebarWidth());
+
+  function getSidebarWidth() {
+    const saved = parseFloat(settingsSidebar.style.getPropertyValue('--sidebar-width'));
+    return Number.isFinite(saved) ? saved : 142;
+  }
+
+  function updateResizerAria(width) {
+    settingsSidebarResizer.setAttribute('aria-valuenow', String(Math.round(width)));
+  }
+
+  settingsSidebarResizer.addEventListener('pointerdown', (event) => {
+    if (settingsSidebar.classList.contains('collapsed')) {
+      setSettingsSidebarCollapsed(false, true);
+    }
+
+    event.preventDefault();
+    settingsSidebarResizer.setPointerCapture(event.pointerId);
+    settingsSidebarResizer.classList.add('dragging');
+    settingsSidebar.classList.add('resizing');
+
+    const startX = event.clientX;
+    const startWidth = getSidebarWidth();
+
+    const resize = (moveEvent) => {
+      const nextWidth = Math.min(
+        MAX_SIDEBAR_WIDTH,
+        Math.max(MIN_SIDEBAR_WIDTH, startWidth + moveEvent.clientX - startX)
+      );
+      settingsSidebar.style.setProperty('--sidebar-width', `${Math.round(nextWidth)}px`);
+      settingsSidebar.style.width = `${Math.round(nextWidth)}px`;
+      updateResizerAria(nextWidth);
+    };
+
+    const finish = (upEvent) => {
+      settingsSidebarResizer.removeEventListener('pointermove', resize);
+      settingsSidebarResizer.removeEventListener('pointerup', finish);
+      settingsSidebarResizer.removeEventListener('pointercancel', finish);
+      settingsSidebarResizer.classList.remove('dragging');
+      settingsSidebar.classList.remove('resizing');
+      if (settingsSidebarResizer.hasPointerCapture(upEvent.pointerId)) {
+        settingsSidebarResizer.releasePointerCapture(upEvent.pointerId);
+      }
+
+      const finalWidth = getSidebarWidth();
+      sidebarWidthPreference = finalWidth;
+      updateResizerAria(finalWidth);
+      vscode.setState({ ...vscode.getState(), settingsSidebarCollapsed: false, settingsSidebarWidth: finalWidth });
+      settingsSidebar.style.width = '';
+    };
+
+    settingsSidebarResizer.addEventListener('pointermove', resize);
+    settingsSidebarResizer.addEventListener('pointerup', finish);
+    settingsSidebarResizer.addEventListener('pointercancel', finish);
+  });
+
+  settingsSidebarResizer.addEventListener('keydown', (event) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    if (settingsSidebar.classList.contains('collapsed')) {
+      setSettingsSidebarCollapsed(false, true);
+    }
+    const direction = event.key === 'ArrowRight' ? 8 : -8;
+    const nextWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, getSidebarWidth() + direction));
+    settingsSidebar.style.setProperty('--sidebar-width', `${nextWidth}px`);
+    sidebarWidthPreference = nextWidth;
+    updateResizerAria(nextWidth);
+    vscode.setState({ ...vscode.getState(), settingsSidebarCollapsed: false, settingsSidebarWidth: nextWidth });
+  });
+
   narrowSidebarQuery.addEventListener('change', applySidebarBreakpoint);
   applySidebarBreakpoint();
 

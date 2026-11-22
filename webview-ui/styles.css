@@ -586,6 +586,7 @@ textarea:focus-visible,
   align-self: flex-end;
   width: fit-content;
   max-width: min(78%, 680px);
+  margin-top: 4px;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
@@ -596,7 +597,10 @@ textarea:focus-visible,
   }
 }
 
-.cp-msg.assistant { border-left: 2px solid var(--accent); }
+.cp-msg.assistant {
+  margin-top: 2px;
+  border-left: 2px solid var(--accent);
+}
 
 .cp-msg-meta {
   display: flex;

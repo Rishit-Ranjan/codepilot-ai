@@ -3,6 +3,25 @@
 import { SecretManager } from './secretManager.js';
 
 const STORAGE_KEY = 'codepilot.config.v1';
+const MODEL_ROLES = ['chat', 'autocomplete', 'edit', 'apply', 'embed', 'rerank'];
+
+function providerModelReference(providerId, modelId) {
+  return `provider:${encodeURIComponent(providerId)}:${encodeURIComponent(modelId)}`;
+}
+
+function parseProviderModelReference(reference) {
+  if (typeof reference !== 'string' || !reference.startsWith('provider:')) return null;
+  const separatorIndex = reference.indexOf(':', 'provider:'.length);
+  if (separatorIndex < 0) return null;
+  try {
+    return {
+      providerId: decodeURIComponent(reference.slice('provider:'.length, separatorIndex)),
+      modelId: decodeURIComponent(reference.slice(separatorIndex + 1))
+    };
+  } catch (_) {
+    return null;
+  }
+}
 
 const DEFAULT_BUILTIN_TOOLS = [
   {
@@ -163,6 +182,7 @@ function createDefaultConfigProfile(id = 'main', name = 'Main Config') {
     ],
     toolsEnabled: true,
     tools: DEFAULT_BUILTIN_TOOLS.map((t) => ({ ...t })),
+    providerConnections: [],
     indexing: {
       enabled: true,
       chunkSizeLines: 60,
@@ -243,6 +263,12 @@ class ConfigManager {
           ...createDefaultConfigProfile(p.id, p.name),
           ...p,
           models: Array.isArray(p.models) ? p.models.map(sanitizeModel) : [],
+          providerConnections: Array.isArray(p.providerConnections)
+            ? p.providerConnections.map((connection) => ({
+                ...connection,
+                models: Array.isArray(connection.models) ? connection.models : []
+              }))
+            : [],
           tools: this._mergeTools(p.tools),
           indexing: {
             ...createDefaultConfigProfile().indexing,
@@ -291,18 +317,145 @@ class ConfigManager {
     );
   }
 
+  _getProviderModel(profile, reference) {
+    const parsed = parseProviderModelReference(reference);
+    if (!parsed) return null;
+    const connection = (profile.providerConnections || []).find(
+      (candidate) => candidate.id === parsed.providerId
+    );
+    const model = connection?.models.find((candidate) => candidate.id === parsed.modelId);
+    if (!connection || !model) return null;
+    return {
+      id: reference,
+      title: `${connection.title} / ${model.label || model.id}`,
+      provider: connection.provider,
+      model: model.id,
+      apiBase: connection.apiBase,
+      requiresApiKey: connection.requiresApiKey,
+      secretKeyId: connection.secretKeyId,
+      completionOptions: connection.completionOptions || {},
+      roles: Array.isArray(model.roles) ? model.roles : ['chat', 'autocomplete', 'edit', 'apply']
+    };
+  }
+
+  _getModelOptions(profile, role) {
+    const legacyModels = profile.models.filter((model) => model.roles.includes(role));
+    const providerModels = (profile.providerConnections || []).flatMap((connection) =>
+      connection.models
+        .filter((model) => {
+          const roles = Array.isArray(model.roles) ? model.roles : ['chat', 'autocomplete', 'edit', 'apply'];
+          return roles.includes(role);
+        })
+        .map((model) =>
+          this._getProviderModel(
+            profile,
+            providerModelReference(connection.id, model.id)
+          )
+        )
+        .filter(Boolean)
+    );
+    return [...legacyModels, ...providerModels];
+  }
+
+  getAvailableModels(role) {
+    if (!MODEL_ROLES.includes(role)) return [];
+    return this._getModelOptions(this.getActiveProfile(), role);
+  }
+
+  async saveProviderConnection(connectionInput, apiKey) {
+    const profile = this.getActiveProfile();
+    const provider = String(connectionInput.provider || '');
+    const id = connectionInput.id || `provider-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const existing = (profile.providerConnections || []).find((connection) => connection.id === id);
+    if (!provider || !Array.isArray(connectionInput.models) || connectionInput.models.length === 0) {
+      throw new Error('Load at least one provider model before saving this connection.');
+    }
+
+    const providerChanged = existing && existing.provider !== provider;
+    const secretKeyId = providerChanged
+      ? SecretManager.buildKeyId(`${id}-${provider}`)
+      : connectionInput.secretKeyId || existing?.secretKeyId || SecretManager.buildKeyId(id);
+    const defaultRoles = provider === 'voyage' || provider === 'jina'
+      ? ['embed', 'rerank']
+      : provider === 'cohere'
+        ? ['chat', 'embed', 'rerank']
+        : ['chat', 'autocomplete', 'edit', 'apply'];
+    const connection = {
+      id,
+      title: String(connectionInput.title || provider).trim(),
+      provider,
+      apiBase: String(connectionInput.apiBase || '').trim(),
+      requiresApiKey: provider !== 'ollama',
+      secretKeyId,
+      completionOptions: normalizeCompletionOptions(connectionInput.completionOptions, provider),
+      models: connectionInput.models
+        .filter((model) => typeof model?.id === 'string' && model.id.trim())
+        .map((model) => ({
+          id: model.id.trim(),
+          label: String(model.label || model.id).trim(),
+          roles: Array.isArray(model.roles) && model.roles.length
+            ? model.roles.filter((role) => MODEL_ROLES.includes(role))
+            : defaultRoles
+        }))
+        .filter((model, index, models) => models.findIndex((candidate) => candidate.id === model.id) === index)
+    };
+    if (connection.models.length === 0) {
+      throw new Error('The provider model catalog did not contain usable model IDs.');
+    }
+
+    if (!Array.isArray(profile.providerConnections)) profile.providerConnections = [];
+    const existingIndex = profile.providerConnections.findIndex((candidate) => candidate.id === id);
+    if (existingIndex < 0) profile.providerConnections.push(connection);
+    else profile.providerConnections[existingIndex] = connection;
+
+    if (typeof apiKey === 'string' && apiKey.trim()) {
+      await this._secrets.setApiKey(secretKeyId, apiKey.trim());
+    }
+
+    for (const role of MODEL_ROLES) {
+      if (!profile.roles[role] && connection.models.some((model) => model.roles.includes(role))) {
+        profile.roles[role] = providerModelReference(id, connection.models.find((model) =>
+          model.roles.includes(role)
+        ).id);
+      }
+    }
+
+    await this._save();
+    if (providerChanged) await this._secrets.deleteApiKey(existing.secretKeyId);
+    return connection;
+  }
+
+  async deleteProviderConnection(connectionId) {
+    const profile = this.getActiveProfile();
+    const connection = (profile.providerConnections || []).find((candidate) => candidate.id === connectionId);
+    if (!connection) return;
+    await this._secrets.deleteApiKey(connection.secretKeyId);
+    profile.providerConnections = profile.providerConnections.filter(
+      (candidate) => candidate.id !== connectionId
+    );
+    for (const role of MODEL_ROLES) {
+      if (parseProviderModelReference(profile.roles[role])?.providerId === connectionId) {
+        const fallback = this._getModelOptions(profile, role)[0];
+        profile.roles[role] = fallback?.id || '';
+      }
+    }
+    await this._save();
+  }
+
   getProfilesSummary() {
     const activeProfileId = this.getActiveProfile().id;
     return this._data.profiles.map((profile) => {
       const modelAssignments = {};
       for (const [role, modelId] of Object.entries(profile.roles || {})) {
-        const model = profile.models.find((candidate) => candidate.id === modelId);
+        const model = profile.models.find((candidate) => candidate.id === modelId) ||
+          this._getProviderModel(profile, modelId);
         if (model) modelAssignments[role] = model.title;
       }
       return {
         id: profile.id,
         name: profile.name,
-        modelCount: profile.models.length,
+        modelCount: profile.models.length +
+          (profile.providerConnections || []).reduce((count, connection) => count + connection.models.length, 0),
         modelAssignments,
         isActive: profile.id === activeProfileId
       };
@@ -397,7 +550,7 @@ class ConfigManager {
     profile.models = profile.models.filter((m) => m.id !== modelId);
     for (const role of Object.keys(profile.roles)) {
       if (profile.roles[role] === modelId) {
-        const fallback = profile.models.find((m) => m.roles.includes(role));
+        const fallback = this._getModelOptions(profile, role)[0];
         profile.roles[role] = fallback ? fallback.id : '';
       }
     }
@@ -405,7 +558,11 @@ class ConfigManager {
   }
 
   async setRoleModel(role, modelId) {
+    if (!MODEL_ROLES.includes(role)) throw new Error(`Unknown model role "${role}".`);
     const profile = this.getActiveProfile();
+    if (modelId && !this._getModelOptions(profile, role).some((model) => model.id === modelId)) {
+      throw new Error(`The selected model is not available for the ${role} role.`);
+    }
     profile.roles[role] = modelId || '';
     await this._save();
   }
@@ -414,18 +571,19 @@ class ConfigManager {
     const profile = this.getActiveProfile();
     const assignedId = profile.roles[role];
     if (assignedId) {
-      const exact = profile.models.find((m) => m.id === assignedId);
+      const exact = profile.models.find((m) => m.id === assignedId) ||
+        this._getProviderModel(profile, assignedId);
       if (exact) return exact;
     }
     if (role === 'chat') {
-      return profile.models.find((m) => m.roles.includes('chat')) || profile.models[0] || null;
+      return this._getModelOptions(profile, role)[0] || profile.models[0] || null;
     }
     return null;
   }
 
   async cycleChatModel() {
     const profile = this.getActiveProfile();
-    const chatModels = profile.models.filter((m) => m.roles.includes('chat'));
+    const chatModels = this._getModelOptions(profile, 'chat');
     if (chatModels.length === 0) return null;
     const currentIdx = chatModels.findIndex((m) => m.id === profile.roles.chat);
     const next = chatModels[(currentIdx + 1) % chatModels.length];
@@ -528,13 +686,30 @@ class ConfigManager {
         maskedApiKey: await this._secrets.getMaskedStatus(m.secretKeyId)
       }))
     );
+    const providerConnections = await Promise.all(
+      (profile.providerConnections || []).map(async (connection) => ({
+        id: connection.id,
+        title: connection.title,
+        provider: connection.provider,
+        apiBase: connection.apiBase,
+        requiresApiKey: connection.requiresApiKey,
+        hasApiKey: await this._secrets.hasApiKey(connection.secretKeyId),
+        maskedApiKey: await this._secrets.getMaskedStatus(connection.secretKeyId),
+        models: connection.models
+      }))
+    );
+    const availableModelsByRole = Object.fromEntries(
+      MODEL_ROLES.map((role) => [role, this._getModelOptions(profile, role)])
+    );
 
     return {
       activeProfileId: profile.id,
       profiles: this.getProfilesSummary(),
       profile: {
         ...profile,
-        models: modelsWithSecretStatus
+        models: modelsWithSecretStatus,
+        providerConnections,
+        availableModelsByRole
       }
     };
   }

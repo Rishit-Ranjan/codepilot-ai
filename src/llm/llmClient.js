@@ -668,61 +668,96 @@ class LLMClient {
       headers['x-goog-api-key'] = apiKey;
     } else if (provider === 'ollama') {
       url = `${baseUrl.replace(/\/v1$/i, '')}/api/tags`;
-    } else if (provider === 'cohere') {
-      const versionedBase = baseUrl.replace(/\/v2$/i, '/v1');
-      const endpoint = role === 'embed' ? 'embed' : role === 'rerank' ? 'rerank' : 'chat';
-      url = `${versionedBase}/models?endpoint=${endpoint}&page_size=1000`;
-      headers.Authorization = `Bearer ${apiKey}`;
     } else {
       url = `${baseUrl}/models`;
       if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
     }
 
-    const response = await fetch(url, { method: 'GET', headers });
-    if (!response.ok) {
-      const responseText = await response.text().catch(() => '');
-      throw new Error(
-        `${provider} model list request failed (${response.status}): ${responseText.slice(0, 300)}`
-      );
-    }
+    const fetchCatalog = async (catalogUrl) => {
+      const response = await fetch(catalogUrl, { method: 'GET', headers });
+      if (!response.ok) {
+        const responseText = await response.text().catch(() => '');
+        throw new Error(
+          `${provider} model list request failed (${response.status}): ${responseText.slice(0, 300)}`
+        );
+      }
+      return await response.json();
+    };
 
-    const result = await response.json();
     let entries;
-    if (provider === 'anthropic') {
-      entries = result.data;
-    } else if (provider === 'gemini') {
-      const method = role === 'embed' ? 'embedContent' : 'generateContent';
-      entries = (result.models || []).filter((model) =>
-        !Array.isArray(model.supportedGenerationMethods) ||
-        model.supportedGenerationMethods.includes(method)
-      );
-    } else if (provider === 'ollama') {
-      entries = result.models;
-    } else if (provider === 'cohere') {
-      entries = result.models;
+    if (provider === 'cohere') {
+      const versionedBase = baseUrl.replace(/\/v2$/i, '/v1');
+      const endpoints = ['chat', 'embed', 'rerank'];
+      const catalogs = await Promise.all(endpoints.map(async (endpoint) => {
+        try {
+          const result = await fetchCatalog(
+            `${versionedBase}/models?endpoint=${endpoint}&page_size=1000`
+          );
+          return (result.models || []).map((model) => ({ ...model, catalogRole: endpoint }));
+        } catch (error) {
+          if (endpoint === role && role !== 'chat') throw error;
+          return [];
+        }
+      }));
+      entries = catalogs.flat();
     } else {
-      entries = result.data || result.models;
+      const result = await fetchCatalog(url);
+      if (provider === 'anthropic') {
+        entries = result.data;
+      } else if (provider === 'gemini') {
+        entries = result.models;
+      } else if (provider === 'ollama') {
+        entries = result.models;
+      } else {
+        entries = result.data || result.models;
+      }
     }
 
     if (!Array.isArray(entries)) {
       throw new Error(`${provider} returned an unsupported model list response.`);
     }
 
-    const models = entries
-      .map((entry) => {
-        const id = provider === 'gemini'
-          ? entry.baseModelId || String(entry.name || '').replace(/^models\//, '')
-          : entry.id || entry.name;
-        return {
-          id: typeof id === 'string' ? id : '',
-          label: entry.display_name || entry.displayName || entry.name || entry.id || id || ''
-        };
-      })
-      .filter((model) => model.id)
-      .filter((model, index, list) => list.findIndex((candidate) => candidate.id === model.id) === index)
-      .slice(0, 500);
+    const chatRoles = ['chat', 'autocomplete', 'edit', 'apply'];
+    const modelsById = new Map();
+    for (const entry of entries) {
+      const id = provider === 'gemini'
+        ? entry.baseModelId || String(entry.name || '').replace(/^models\//, '')
+        : entry.id || entry.name;
+      if (typeof id !== 'string' || !id) continue;
 
-    return models;
+      let roles;
+      if (provider === 'gemini') {
+        const methods = entry.supportedGenerationMethods || [];
+        roles = [];
+        if (methods.includes('generateContent')) roles.push(...chatRoles);
+        if (methods.includes('embedContent')) roles.push('embed');
+      } else if (provider === 'cohere') {
+        roles = entry.catalogRole === 'embed'
+          ? ['embed']
+          : entry.catalogRole === 'rerank'
+            ? ['rerank']
+            : chatRoles;
+      } else if (provider === 'voyage' || provider === 'jina') {
+        roles = /embed/i.test(id) ? ['embed'] : /rerank/i.test(id) ? ['rerank'] : chatRoles;
+      } else if (provider === 'ollama' && /embed/i.test(id)) {
+        roles = ['embed'];
+      } else if (provider === 'openai' && /^(text-embedding|.*rerank)/i.test(id)) {
+        roles = /^text-embedding/i.test(id) ? ['embed'] : ['rerank'];
+      } else {
+        roles = chatRoles;
+      }
+
+      if (roles.length === 0) continue;
+      const model = modelsById.get(id) || {
+        id,
+        label: entry.display_name || entry.displayName || entry.name || entry.id || id,
+        roles: []
+      };
+      model.roles = [...new Set([...model.roles, ...roles])];
+      modelsById.set(id, model);
+    }
+
+    return [...modelsById.values()].slice(0, 1000);
   }
 
   /**

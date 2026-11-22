@@ -337,6 +337,63 @@
       </div>
     </div>
 
+    <!-- PROVIDER CONNECTION MODAL -->
+    <div id="modal-provider" class="cp-modal-backdrop hidden" role="dialog" aria-modal="true">
+      <div class="cp-modal">
+        <div class="cp-modal-header">
+          <h3 id="modal-provider-title">Connect Cloud Provider</h3>
+          <button type="button" id="btn-close-provider-modal" class="cp-icon-btn">&times;</button>
+        </div>
+        <form id="form-provider" class="cp-form">
+          <input type="hidden" id="field-provider-connection-id" />
+          <label class="cp-label">
+            Connection Name
+            <input id="field-provider-title" class="cp-input" type="text" placeholder="e.g., My Anthropic account" required />
+          </label>
+          <label class="cp-label">
+            Provider
+            <select id="field-provider-provider" class="cp-select">
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="gemini">Google Gemini</option>
+              <option value="openrouter">OpenRouter</option>
+              <option value="voyage">Voyage AI</option>
+              <option value="cohere">Cohere</option>
+              <option value="jina">Jina AI</option>
+              <option value="ollama">Ollama (Local)</option>
+              <option value="custom">Custom OpenAI-Compatible</option>
+            </select>
+          </label>
+          <label class="cp-label">
+            API Base URL
+            <input id="field-provider-base" class="cp-input" type="text" placeholder="Auto-filled from provider" />
+          </label>
+          <div class="cp-label">
+            <span>API Key <span class="cp-badge-secure">Encrypted via SecretStorage</span></span>
+            <div class="cp-secret-row">
+              <input id="field-provider-apikey" class="cp-input" type="password" placeholder="Leave blank to keep existing key" autocomplete="off" />
+              <button type="button" id="btn-provider-toggle-key" class="cp-ghost-btn">Show</button>
+            </div>
+            <small id="provider-secret-status" class="cp-muted">Stored privately in OS keychain — never saved in plain text config.</small>
+          </div>
+          <div class="cp-card">
+            <div class="cp-card-row">
+              <strong>Available models</strong>
+              <button type="button" id="btn-provider-load-models" class="cp-ghost-btn">Load Models</button>
+            </div>
+            <div id="provider-catalog-status" class="cp-muted" role="status" aria-live="polite">
+              Load the model catalog to make all available models selectable by role.
+            </div>
+            <div id="provider-catalog-preview" class="cp-provider-model-preview hidden"></div>
+          </div>
+          <div class="cp-modal-actions">
+            <button type="button" id="btn-provider-cancel" class="cp-ghost-btn">Cancel</button>
+            <button type="submit" class="cp-primary-btn">Save Provider</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <!-- ADD DOCUMENTATION MODAL -->
     <div id="modal-doc" class="cp-modal-backdrop hidden" role="dialog" aria-modal="true">
       <div class="cp-modal">

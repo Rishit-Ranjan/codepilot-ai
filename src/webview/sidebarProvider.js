@@ -216,17 +216,21 @@ class SidebarProvider {
             break;
           }
 
-          const existingModel = this._config.getActiveProfile().models.find(
+          const profile = this._config.getActiveProfile();
+          const existingModel = profile.models.find(
             (model) => model.id === msg.modelId && model.provider === provider
+          );
+          const existingConnection = (profile.providerConnections || []).find(
+            (connection) => connection.id === msg.connectionId && connection.provider === provider
           );
           try {
             const models = await this._llm.listModels(
               {
-                title: existingModel?.title || provider,
+                title: existingConnection?.title || existingModel?.title || provider,
                 provider,
-                apiBase: String(msg.apiBase || ''),
+                apiBase: String(msg.apiBase || existingConnection?.apiBase || ''),
                 requiresApiKey: provider !== 'ollama',
-                secretKeyId: existingModel?.secretKeyId
+                secretKeyId: existingConnection?.secretKeyId || existingModel?.secretKeyId
               },
               typeof msg.apiKey === 'string' ? msg.apiKey : '',
               String(msg.role || 'chat')
@@ -235,6 +239,7 @@ class SidebarProvider {
               type: 'modelsListed',
               requestId: msg.requestId,
               provider,
+              connectionId: msg.connectionId,
               models
             });
           } catch (err) {
@@ -242,11 +247,27 @@ class SidebarProvider {
               type: 'modelsListed',
               requestId: msg.requestId,
               provider,
+              connectionId: msg.connectionId,
               error: err.message || 'Unable to load models.'
             });
           }
           break;
         }
+
+        case 'saveProviderConnection':
+          await this._config.saveProviderConnection(msg.connection, msg.apiKey);
+          await this.pushFullState();
+          this.postMessage({
+            type: 'providerConnectionSaved',
+            requestId: msg.requestId,
+            connectionId: msg.connection.id
+          });
+          break;
+
+        case 'deleteProviderConnection':
+          await this._config.deleteProviderConnection(msg.connectionId);
+          await this.pushFullState();
+          break;
 
         case 'saveModel':
           await this._config.saveModel(msg.model, msg.apiKey);
@@ -379,9 +400,7 @@ class SidebarProvider {
     }
 
     const model = modelId
-      ? this._config
-          .getActiveProfile()
-          .models.find((candidate) => candidate.id === modelId && candidate.roles.includes(role))
+      ? this._config.getAvailableModels(role).find((candidate) => candidate.id === modelId)
       : this._config.getModelForRole(role) ||
         (['edit', 'apply', 'autocomplete'].includes(role)
           ? this._config.getModelForRole('chat')

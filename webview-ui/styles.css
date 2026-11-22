@@ -573,6 +573,8 @@ textarea:focus-visible,
 }
 
 .cp-msg {
+  box-sizing: border-box;
+  min-width: 0;
   max-width: 100%;
   padding: 9px 10px;
   border-radius: var(--radius);
@@ -582,15 +584,15 @@ textarea:focus-visible,
 
 .cp-msg.user {
   align-self: flex-end;
-  box-sizing: border-box;
-  width: 88%;
-  max-width: 720px;
-  /* Keep the existing border and background rules. */
+  width: fit-content;
+  max-width: min(78%, 680px);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 @container (max-width: 360px) {
   .cp-msg.user {
-    width: 100%;
+    max-width: 92%;
   }
 }
 
@@ -606,6 +608,8 @@ textarea:focus-visible,
 }
 
 .cp-msg-body {
+  min-width: 0;
+  max-width: 100%;
   word-break: break-word;
   overflow-wrap: anywhere;
   line-height: 1.55;

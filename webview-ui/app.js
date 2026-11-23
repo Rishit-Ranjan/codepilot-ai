@@ -658,7 +658,7 @@
     emptyStateEl.classList.add('hidden');
     const renderedMessages = messages
       .map((m) => {
-        const badge = m.role === 'user' ? `You (${escapeHtml(m.mode || 'chat')})` : escapeHtml(m.modelTitle || 'CodePilot AI');
+        const badge = m.role === 'user' ? `You (${escapeHtml(m.mode || 'chat')})` : escapeHtml(m.modelTitle || 'CodePilot Coder');
         const skillNames = (m.skillIds || [])
           .map((skillId) => appState?.config?.profile?.skills?.find((skill) => skill.id === skillId)?.name)
           .filter(Boolean);
@@ -681,7 +681,7 @@
     const streamingMessage = hasActiveStream
       ? `
         <div class="cp-msg assistant" data-msg-id="${escapeHtml(streamingMsgId)}">
-          <div class="cp-msg-meta"><strong>${escapeHtml(streamingModelTitle || 'CodePilot AI')}</strong><span>Streaming...</span></div>
+          <div class="cp-msg-meta"><strong>${escapeHtml(streamingModelTitle || 'CodePilot Coder')}</strong><span>Streaming...</span></div>
           <div class="cp-msg-body">${renderMarkdown(streamingText)}</div>
         </div>
       `
@@ -1293,7 +1293,7 @@
       settingsContentEl.innerHTML = `
         <h2 class="cp-section-title">Help & Shortcuts</h2>
         <div class="cp-card">
-          <p><kbd>Ctrl+L</kbd> &mdash; Focus CodePilot AI & attach selected code</p>
+          <p><kbd>Ctrl+L</kbd> &mdash; Focus CodePilot Coder & attach selected code</p>
           <p><kbd>Ctrl+I</kbd> &mdash; Inline Edit selected code</p>
           <p><kbd>Ctrl+.</kbd> &mdash; Cycle Mode (Chat / Plan / Agent)</p>
           <p><kbd>Ctrl+'</kbd> &mdash; Toggle Chat Model</p>
@@ -1590,7 +1590,7 @@
         isStreaming = true;
         streamingMsgId = msg.messageId;
         streamingSessionId = msg.sessionId;
-        streamingModelTitle = msg.modelTitle || 'CodePilot AI';
+        streamingModelTitle = msg.modelTitle || 'CodePilot Coder';
         streamingText = '';
         document.getElementById('btn-send').classList.add('hidden');
         document.getElementById('btn-stop').classList.remove('hidden');

@@ -7,7 +7,7 @@
     http-equiv="Content-Security-Policy"
     content="default-src 'none'; img-src {{cspSource}}; style-src {{cspSource}} 'unsafe-inline'; script-src 'nonce-{{nonce}}';"
   />
-  <title>CodePilot AI</title>
+  <title>CodePilot Coder</title>
   <link rel="stylesheet" href="{{stylesUri}}" />
 </head>
 <body>
@@ -73,7 +73,7 @@
             class="cp-textarea"
             rows="3"
             placeholder="Ask anything, '@' to add context"
-            aria-label="Ask CodePilot AI"
+            aria-label="Ask CodePilot Coder"
           ></textarea>
 
           <!-- @ Context Popover -->
@@ -180,7 +180,7 @@
       <div id="empty-state" class="cp-empty-state">
         <button id="btn-last-session" class="cp-link-btn hidden">&larr; Last Session</button>
         <div class="cp-empty-card">
-          <h3>CodePilot AI</h3>
+          <h3>CodePilot Coder</h3>
           <p>Private, local-first coding assistant. API keys stay encrypted in VS Code SecretStorage.</p>
           <div class="cp-shortcut-grid">
             <span><kbd>Ctrl+L</kbd> Focus Chat</span>

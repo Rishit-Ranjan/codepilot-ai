@@ -1567,6 +1567,121 @@
     closeModelModal();
   });
 
+  // Provider Connection Modal refs
+  const modalProvider = document.getElementById('modal-provider');
+  const formProvider = document.getElementById('form-provider');
+  const providerSelect = document.getElementById('field-provider-provider');
+  const providerBaseInput = document.getElementById('field-provider-base');
+  const providerApiKeyInput = document.getElementById('field-provider-apikey');
+  const providerLoadBtn = document.getElementById('btn-provider-load-models');
+  const providerCatalogStatus = document.getElementById('provider-catalog-status');
+  const providerCatalogPreview = document.getElementById('provider-catalog-preview');
+
+  let providerCatalogRequestId = 0;
+  let loadedProviderModels = [];
+
+  function openProviderModal(existing = null) {
+    document.getElementById('modal-provider-title').textContent =
+      existing ? 'Edit Cloud Provider' : 'Connect Cloud Provider';
+    document.getElementById('field-provider-connection-id').value = existing?.id || '';
+    const provider = existing?.provider || 'anthropic';
+    document.getElementById('field-provider-title').value =
+      existing?.title || provider.charAt(0).toUpperCase() + provider.slice(1);
+    providerSelect.value = provider;
+    providerBaseInput.value =
+      existing?.apiBase || PROVIDER_DEFAULTS[provider]?.base || '';
+    providerApiKeyInput.value = '';
+    loadedProviderModels = existing?.models || [];
+    renderProviderModelPreview(loadedProviderModels);
+    providerCatalogStatus.textContent = existing?.hasApiKey
+      ? `Connected (${existing.maskedApiKey}). Paste a new key to update, or reload models.`
+      : 'Paste your API key to automatically load all models available on your account.';
+    modalProvider.classList.remove('hidden');
+  }
+
+  function renderProviderModelPreview(models) {
+    if (!models || models.length === 0) {
+      providerCatalogPreview.classList.add('hidden');
+      providerCatalogPreview.innerHTML = '';
+      return;
+    }
+    providerCatalogPreview.classList.remove('hidden');
+    providerCatalogPreview.innerHTML = models
+      .map((m) => `<span class="cp-badge" style="margin:2px;">${escapeHtml(m.label || m.id)}</span>`)
+      .join('');
+  }
+
+  function triggerProviderModelFetch() {
+    const provider = providerSelect.value;
+    const apiKey = providerApiKeyInput.value.trim();
+    const existingId = document.getElementById('field-provider-connection-id').value;
+    if (PROVIDER_DEFAULTS[provider]?.needsKey !== false && !apiKey && !existingId) {
+      return;
+    }
+
+    const requestId = ++providerCatalogRequestId;
+    providerLoadBtn.disabled = true;
+    providerLoadBtn.textContent = 'Loading...';
+    providerCatalogStatus.textContent = 'Fetching available models from your account...';
+
+    vscode.postMessage({
+      type: 'listProviderModels',
+      requestId,
+      provider,
+      apiBase: providerBaseInput.value.trim(),
+      apiKey,
+      connectionId: existingId
+    });
+  }
+
+  // Auto-fetch models as soon as user pastes or finishes entering API key
+  let keyDebounce = null;
+  providerApiKeyInput.addEventListener('input', () => {
+    clearTimeout(keyDebounce);
+    keyDebounce = setTimeout(triggerProviderModelFetch, 500);
+  });
+
+  providerSelect.addEventListener('change', () => {
+    const provider = providerSelect.value;
+    providerBaseInput.value = PROVIDER_DEFAULTS[provider]?.base || '';
+    const titleInput = document.getElementById('field-provider-title');
+    if (!titleInput.value.trim() || Object.keys(PROVIDER_DEFAULTS).includes(titleInput.value.trim().toLowerCase())) {
+      titleInput.value = provider.charAt(0).toUpperCase() + provider.slice(1);
+    }
+    loadedProviderModels = [];
+    renderProviderModelPreview([]);
+    triggerProviderModelFetch();
+  });
+
+  providerLoadBtn.addEventListener('click', triggerProviderModelFetch);
+
+  document.getElementById('btn-provider-toggle-key').addEventListener('click', (e) => {
+    const isPwd = providerApiKeyInput.type === 'password';
+    providerApiKeyInput.type = isPwd ? 'text' : 'password';
+    e.target.textContent = isPwd ? 'Hide' : 'Show';
+  });
+
+  const closeProviderModal = () => modalProvider.classList.add('hidden');
+  document.getElementById('btn-close-provider-modal').addEventListener('click', closeProviderModal);
+  document.getElementById('btn-provider-cancel').addEventListener('click', closeProviderModal);
+
+  formProvider.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const provider = providerSelect.value;
+    vscode.postMessage({
+      type: 'saveProviderConnection',
+      connection: {
+        id: document.getElementById('field-provider-connection-id').value || undefined,
+        title: document.getElementById('field-provider-title').value.trim(),
+        provider,
+        apiBase: providerBaseInput.value.trim(),
+        models: loadedProviderModels
+      },
+      apiKey: providerApiKeyInput.value.trim()
+    });
+    closeProviderModal();
+  });
+
   // Doc Modal
   document.getElementById('btn-close-doc-modal').addEventListener('click', () => modalDoc.classList.add('hidden'));
   document.getElementById('btn-cancel-doc').addEventListener('click', () => modalDoc.classList.add('hidden'));
@@ -1650,6 +1765,22 @@
               `${models.length} model${models.length === 1 ? '' : 's'} loaded. Choose one from the list or enter any model ID.`;
           }
         }
+        break;
+      }
+
+      case 'providerModelsListed': {
+        if (msg.requestId !== providerCatalogRequestId) break;
+        providerLoadBtn.disabled = false;
+        providerLoadBtn.textContent = 'Load Models';
+        if (msg.error) {
+          providerCatalogStatus.textContent = `Error: ${msg.error}`;
+          break;
+        }
+        loadedProviderModels = Array.isArray(msg.models) ? msg.models : [];
+        renderProviderModelPreview(loadedProviderModels);
+        providerCatalogStatus.textContent = loadedProviderModels.length
+          ? `${loadedProviderModels.length} models unlocked! Save to add all of them to your model dropdown.`
+          : 'Connected, but no models were returned.';
         break;
       }
 

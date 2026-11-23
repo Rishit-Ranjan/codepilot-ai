@@ -15,6 +15,8 @@
   let activeSearchProvider = null;
   let contextSearchRequestId = 0;
   let toastTimeout = null;
+  let inlineMentionActive = false;
+  let inlineMentionStart = -1;
 
   const PROVIDER_DEFAULTS = {
     openai: { base: 'https://api.openai.com/v1', needsKey: true },
@@ -344,16 +346,49 @@
     }
   });
 
+  function getInlineMentionMatch(inputEl) {
+    const caret = inputEl.selectionStart ?? inputEl.value.length;
+    const beforeCaret = inputEl.value.slice(0, caret);
+    const match = beforeCaret.match(/(?:^|\s)@([^\s@]*)$/);
+    if (!match) return null;
+    const fullMatch = match[0];
+    const atIndex = beforeCaret.length - match[1].length - 1;
+    return {
+      query: match[1],
+      start: atIndex,
+      end: caret,
+      hasLeadingSpace: /^\s/.test(fullMatch)
+    };
+  }
+
+  function openInlineMentionMenu(query, start) {
+    inlineMentionActive = true;
+    inlineMentionStart = start;
+    activeSearchProvider = null;
+    contextSearchRequestId++;
+    contextMenuHeader.classList.add('hidden');
+    renderContextProvidersRoot(query);
+    menuContext.classList.remove('hidden');
+  }
+
+  function closeInlineMentionMenu() {
+    inlineMentionActive = false;
+    inlineMentionStart = -1;
+    closeContextMenu();
+  }
+
   // @ Context Menu
   function openContextMenu() {
     activeSearchProvider = null;
     contextSearchRequestId++;
     contextMenuHeader.classList.add('hidden');
-    renderContextProvidersRoot();
+    renderContextProvidersRoot('');
     menuContext.classList.remove('hidden');
   }
 
   function closeContextMenu() {
+    inlineMentionActive = false;
+    inlineMentionStart = -1;
     activeSearchProvider = null;
     contextSearchRequestId++;
     contextMenuHeader.classList.add('hidden');
@@ -367,12 +402,21 @@
   }
 
   function clearContextTrigger() {
-    if (chatInput.value.endsWith('@')) {
+    const caret = chatInput.selectionStart ?? chatInput.value.length;
+    if (inlineMentionStart >= 0 && inlineMentionStart < caret) {
+      const before = chatInput.value.slice(0, inlineMentionStart);
+      const after = chatInput.value.slice(caret);
+      chatInput.value = before + after;
+      chatInput.setSelectionRange(before.length, before.length);
+    } 
+    else if (chatInput.value.endsWith('@')) {
       chatInput.value = chatInput.value.slice(0, -1);
       chatInput.setSelectionRange(chatInput.value.length, chatInput.value.length);
     }
+    inlineMentionActive = false;
+    inlineMentionStart = -1;
     chatInput.focus();
-  }
+}
 
   document.getElementById('btn-at-context').addEventListener('click', (e) => {
     e.stopPropagation();
@@ -401,18 +445,29 @@
     }
   });
 
-  function renderContextProvidersRoot() {
-    const providers = appState?.contextProviders || [];
-    contextMenuList.innerHTML = providers
-      .map(
-        (p) => `
+  function renderContextProvidersRoot(filterQuery = '') {
+    const q = String(filterQuery || '').trim().toLowerCase();
+    const allProviders = appState?.contextProviders || [];
+    const providers = allProviders.filter((p) => {
+      if (!q) return true;
+      return (
+        String(p.label || '').toLowerCase().includes(q) ||
+        String(p.id || '').toLowerCase().includes(q)
+      );
+    });
+
+    contextMenuList.innerHTML = providers.length
+      ? providers
+          .map(
+            (p) => `
       <button class="cp-menu-item" data-provider="${escapeHtml(p.id)}" data-searchable="${p.searchable}">
         <span>${escapeHtml(p.label)}</span>
         <span class="cp-muted">${p.searchable ? 'Search &rarr;' : ''}</span>
       </button>
     `
-      )
-      .join('');
+          )
+          .join('')
+      : '<div class="cp-muted" style="padding:8px;">No matching context providers.</div>';
 
     contextMenuList.querySelectorAll('.cp-menu-item').forEach((btn) => {
       btn.addEventListener('click', (e) => {
@@ -420,13 +475,15 @@
         const pid = btn.dataset.provider;
         const searchable = btn.dataset.searchable === 'true';
         if (searchable) {
+          clearContextTrigger();
           activeSearchProvider = pid;
           contextMenuHeader.classList.remove('hidden');
           contextSearchInput.value = '';
           contextSearchInput.focus();
+          menuContext.classList.remove('hidden');
           searchContextProvider(pid, '');
         } else {
-          const prov = providers.find((x) => x.id === pid);
+          const prov = allProviders.find((x) => x.id === pid);
           clearContextTrigger();
           addAttachment({ provider: pid, label: prov ? prov.label : pid });
           closeContextMenu();
@@ -518,15 +575,28 @@
   });
 
   chatInput.addEventListener('input', () => {
-    const val = chatInput.value;
-    if (val.endsWith('@')) {
-      openContextMenu();
+    const mention = getInlineMentionMatch(chatInput);
+    if (mention) {
+      openInlineMentionMenu(mention.query, mention.start);
+    } else if (inlineMentionActive) {
+      closeInlineMentionMenu();
     } else if (!activeSearchProvider && !menuContext.classList.contains('hidden')) {
       closeContextMenu();
     }
   });
 
   chatInput.addEventListener('keydown', (e) => {
+    const inlineMenuOpen = !menuContext.classList.contains('hidden') && !activeSearchProvider;
+
+    if (inlineMenuOpen && (e.key === 'Enter' || e.key === 'Tab')) {
+      const firstItem = contextMenuList.querySelector('button.cp-menu-item[data-provider]');
+      if (firstItem) {
+        e.preventDefault();
+        firstItem.click();
+        return;
+      }
+    }
+
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       sendCurrentMessage(true);

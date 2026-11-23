@@ -361,6 +361,7 @@
     };
   }
 
+  // Inline mentions menu
   function openInlineMentionMenu(query, start) {
     inlineMentionActive = true;
     inlineMentionStart = start;

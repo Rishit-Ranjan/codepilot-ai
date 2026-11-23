@@ -20,6 +20,8 @@ const DEFAULT_IGNORED_DIRS = new Set([
   '.codepilot'
 ]);
 
+const DEFAULT_IGNORED_FILES= new Set(['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml']);
+
 const TEXT_EXTENSIONS = new Set([
   '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx',
   '.py', '.rb', '.go', '.rs', '.java', '.kt', '.cs', '.cpp', '.c', '.h', '.hpp',
@@ -185,7 +187,7 @@ class CodebaseIndexer {
     }
 
     // Optional embedding pass if an Embed model is configured & reachable
-    if (options.embedModel && this._llmClient && chunks.length > 0 && chunks.length <= 250) {
+    if (options.embedModel && this._llmClient && chunks.length > 0 && chunks.length <= 300) {
       try {
         const batchSize = 25;
         for (let i = 0; i < chunks.length; i += batchSize) {
@@ -279,11 +281,24 @@ class CodebaseIndexer {
     const queryTokens = tokenize(query);
     if (queryTokens.length === 0 || this._chunks.length === 0) return [];
 
+    // Extract code-like tokens/phrases (anything with symbols like {/*hello*/}, backticks, or camelCase/snake_case)
+    const codeLiterals = (query.match(/`([^`]+)`|([^\s"']*[^\w\s"'][^\s"']*)/g) || [])
+      .map((s) => s.replace(/^`|`$/g, '').trim())
+      .filter((s) => s.length >= 3);
+
     const scored = this._chunks.map((chunk) => {
       const bm25 = this._bm25Score(queryTokens, chunk);
       let sim = 0;
       if (queryEmbedding && Array.isArray(chunk.embedding)) {
         sim = cosineSimilarity(queryEmbedding, chunk.embedding);
+      }
+
+      // Strong boost when the exact code snippet/comment appears in the chunk
+      let exactBoost = 0;
+      for (const lit of codeLiterals) {
+        if (chunk.text.includes(lit)) {
+          exactBoost += 15;
+        }
       }
 
       return {
@@ -292,7 +307,7 @@ class CodebaseIndexer {
         endLine: chunk.endLine,
         symbols: chunk.symbols,
         text: chunk.text,
-        score: bm25 + sim * 5
+        score: bm25 + sim * 5 + exactBoost
       };
     });
 
@@ -352,7 +367,7 @@ class CodebaseIndexer {
   }
 
   _isIgnored(relPath, name, ignorePatterns) {
-    if (DEFAULT_IGNORED_DIRS.has(name)) return true;
+    if (DEFAULT_IGNORED_DIRS.has(name) || DEFAULT_IGNORED_FILES.has(name)) return true;
     for (const pat of ignorePatterns) {
       if (name === pat || relPath === pat || relPath.startsWith(`${pat}/`)) {
         return true;

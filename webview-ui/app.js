@@ -776,6 +776,69 @@
     return true;
   }
 
+  // Models Section grouping
+  const PROVIDER_SECTIONS = [
+    { key: 'gemini', title: 'Gemini' },
+    { key: 'openai', title: 'ChatGPT (OpenAI)' },
+    { key: 'anthropic', title: 'Claude (Anthropic)' },
+    { key: 'openrouter', title: 'OpenRouter' },
+    { key: 'ollama', title: 'Ollama (Local)' },
+    { key: 'custom', title: 'Custom' }
+  ];
+
+  const DEFAULT_MODELS_BY_PROVIDER = {
+    gemini: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite'],
+    openai: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'o3-mini'],
+    anthropic: ['claude-sonnet-4-5', 'claude-opus-4-1', 'claude-haiku-4-5']
+  };
+
+  function getGroupedModelEntries(chatModels) {
+    const groups = new Map();
+
+    for (const sec of PROVIDER_SECTIONS) {
+      groups.set(sec.key, { label: sec.title, items: [] });
+    }
+
+    for (const m of chatModels) {
+      const provKey = String(m.provider || 'custom').toLowerCase();
+      if (!groups.has(provKey)) {
+        groups.set(provKey, {
+          label: m.provider || 'Other',
+          items: []
+        });
+      }
+
+      const defaults = !m.model ? (DEFAULT_MODELS_BY_PROVIDER[provKey] || []) : [];
+      if (defaults.length > 0) {
+        for (const slug of defaults) {
+          groups.get(provKey).items.push({
+            id: m.id,
+            modelSlug: slug,
+            title: slug,
+            subtitle: m.title || provKey,
+            isActive: m.id === appState?.config?.profile?.roles?.chat && m.model === slug,
+            needsKey: Boolean(m.requiresApiKey && !m.hasApiKey)
+          });
+        }
+      } else {
+        const displayTitle =
+          m.model && m.title && m.title.toLowerCase() !== m.model.toLowerCase()
+            ? `${m.title} (${m.model})`
+            : (m.model || m.title);
+        groups.get(provKey).items.push({
+          id: m.id,
+          modelSlug: m.model || '',
+          title: displayTitle,
+          subtitle: m.requiresApiKey && !m.hasApiKey ? 'Key needed' : provKey,
+          isActive: m.id === appState?.config?.profile?.roles?.chat,
+          needsKey: Boolean(m.requiresApiKey && !m.hasApiKey)
+        });
+      }
+    }
+
+    return Array.from(groups.values()).filter((g) => g.items.length > 0);
+  }
+
   function renderTopControls() {
     if (!appState) return;
     const { mode, config, sessions } = appState;
@@ -804,27 +867,50 @@
       profile.models.find((m) => m.id === profile.roles.chat) ||
       profile.models.find((m) => m.roles.includes('chat')) ||
       profile.models[0];
+    const activeSlug = activeChatModel?.model || '';
     document.getElementById('label-model').textContent = activeChatModel
-      ? activeChatModel.title
+      ? (activeSlug && activeChatModel.title.toLowerCase() !== activeSlug.toLowerCase()
+          ? `${activeChatModel.title} · ${activeSlug}`
+          : (activeSlug || activeChatModel.title))
       : 'Select Model';
 
-    // Model picker list
+    // Model picker list (grouped by provider sections)
     const chatModels = profile.models.filter((m) => m.roles.includes('chat'));
     const modelListEl = document.getElementById('model-picker-list');
-    modelListEl.innerHTML = chatModels
+    const groupedModels = getGroupedModelEntries(chatModels);
+
+    modelListEl.innerHTML = groupedModels
       .map(
-        (m) => `
-      <button class="cp-menu-item ${m.id === profile.roles.chat ? 'active' : ''}" data-pick-model="${escapeHtml(m.id)}">
-        <span>${escapeHtml(m.title)}</span>
-        <span class="cp-muted">${m.requiresApiKey && !m.hasApiKey ? 'Key needed' : escapeHtml(m.provider)}</span>
-      </button>
+        (group) => `
+      <div class="cp-popover-section">
+        <div class="cp-popover-section-title">${escapeHtml(group.label)}</div>
+        ${group.items
+          .map(
+            (item) => `
+          <button
+            class="cp-menu-item ${item.isActive ? 'active' : ''}"
+            data-pick-model="${escapeHtml(item.id)}"
+            data-pick-slug="${escapeHtml(item.modelSlug)}"
+          >
+            <span>${escapeHtml(item.title)}</span>
+            <span class="cp-muted">${escapeHtml(item.subtitle)}</span>
+          </button>
+        `
+          )
+          .join('')}
+      </div>
     `
       )
       .join('');
 
     modelListEl.querySelectorAll('button[data-pick-model]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        vscode.postMessage({ type: 'setRoleModel', role: 'chat', modelId: btn.dataset.pickModel });
+        vscode.postMessage({
+          type: 'setRoleModel',
+          role: 'chat',
+          modelId: btn.dataset.pickModel,
+          modelSlug: btn.dataset.pickSlug || undefined
+        });
         closeAllPopovers();
       });
     });

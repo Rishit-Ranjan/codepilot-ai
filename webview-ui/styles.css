@@ -1199,3 +1199,18 @@ textarea:focus-visible,
     justify-content: space-between;
   }
 }
+
+.cp-popover-section + .cp-popover-section{
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
+.cp-popover-section-title{
+  padding: 4px 8px 2px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+}

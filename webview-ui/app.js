@@ -1934,7 +1934,8 @@
               `Auto-selected newest active Claude model: ${models[0].label || models[0].id}. Choose another from the list or enter any model ID.`;
           } else {
             modelCatalogStatus.textContent =
-              `${models.length} model${models.length === 1 ? '' : 's'} loaded. Choose one from the list or enter any model ID.`;
+              `${models.length} model${models.length === 1 ? '' : 's'} loaded. Choose one from the list or enter any model ID. 
+              You can also just click "Save Model" below to load all the available models for the provider.`;
           }
         }
         break;

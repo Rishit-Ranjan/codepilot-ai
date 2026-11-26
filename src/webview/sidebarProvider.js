@@ -191,6 +191,11 @@ class SidebarProvider {
           await this.pushFullState();
           break;
 
+        case 'deleteMessage':
+          await this._sessions.deleteMessage(msg.sessionId, msg.messageId);
+          await this.pushFullState();
+          break;
+
         case 'setRoleModel':
           await this._config.setRoleModel(msg.role, msg.modelId, msg.modelSlug);
           await this.pushFullState();

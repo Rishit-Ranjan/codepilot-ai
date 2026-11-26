@@ -778,7 +778,16 @@
           <div class="cp-msg ${m.role}" data-msg-id="${escapeHtml(m.id)}">
             <div class="cp-msg-meta">
               <strong>${badge}</strong>
-              <span>${status || chips}</span>
+              <span style="display:inline-flex;align-items:center;gap:6px;">
+                <span>${status || chips}</span>
+                <button class="cp-icon-btn" data-del-msg="${escapeHtml(m.id)}" title="Delete message" aria-label="Delete message" style="padding:2px;opacity:0.65;">
+                  <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2.5 4.5h11"/>
+                    <path d="M6 4.5V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5"/>
+                    <path d="M4 4.5l.7 8.5a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9l.7-8.5"/>
+                  </svg>
+                </button>
+              </span>
             </div>
             <div class="cp-msg-body">${renderMarkdown(m.content || '')}</div>
           </div>
@@ -796,6 +805,17 @@
     chatMessagesEl.innerHTML = renderedMessages + streamingMessage;
 
     bindCodeButtons(chatMessagesEl);
+    chatMessagesEl.querySelectorAll('button[data-del-msg]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!activeSession?.id) return;
+        vscode.postMessage({
+          type: 'deleteMessage',
+          sessionId: activeSession.id,
+          messageId: btn.dataset.delMsg
+        });
+      });
+    });
     chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
   }
 

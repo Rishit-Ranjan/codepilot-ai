@@ -92,6 +92,14 @@ class SessionManager {
     await this._save();
   }
 
+  async deleteMessage(sessionId, messageId) {
+    const session = this._sessions.find((s) => s.id === sessionId);
+    if (!session || !Array.isArray(session.messages)) return;
+    session.messages = session.messages.filter((m) => m.id !== messageId);
+    session.updatedAt = Date.now();
+    await this._save();
+  }
+
   listSessions() {
     return this._sessions
       .filter((s) => Array.isArray(s.messages) && s.messages.length > 0)

@@ -827,17 +827,23 @@
         });
       }
 
-      // Try live-fetched models first, fall back to hardcoded defaults
+      // Try live-fetched models first, fall back to hardcoded defaults.
+      // Always show the full list for providers that have known defaults or live results —
+      // the saved slug (m.model) only marks the currently-active item, it doesn't limit the list.
       const liveEntry = pickerModelsCache[provKey];
       const liveModels = liveEntry?.models; // null = in-flight, array = done
-      const defaults = !m.model
-        ? (Array.isArray(liveModels) && liveModels.length > 0
-            ? liveModels.map((lm) => lm.id)
-            : (DEFAULT_MODELS_BY_PROVIDER[provKey] || []))
-        : [];
 
-      if (defaults.length > 0) {
-        for (const slug of defaults) {
+      // Trigger background fetch for cloud providers that have an API key stored
+      if (m.hasApiKey && ['gemini', 'openai', 'anthropic', 'openrouter'].includes(provKey)) {
+        fetchPickerModels(provKey);
+      }
+
+      const slugList = Array.isArray(liveModels) && liveModels.length > 0
+        ? liveModels.map((lm) => lm.id)
+        : (DEFAULT_MODELS_BY_PROVIDER[provKey] || []);
+
+      if (slugList.length > 0) {
+        for (const slug of slugList) {
           const liveLabel = Array.isArray(liveModels)
             ? (liveModels.find((lm) => lm.id === slug)?.label || slug)
             : slug;
@@ -851,6 +857,7 @@
           });
         }
       } else {
+        // No known defaults for this provider — show the single configured model as-is
         const displayTitle =
           m.model && m.title && m.title.toLowerCase() !== m.model.toLowerCase()
             ? `${m.title} (${m.model})`

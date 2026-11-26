@@ -1572,10 +1572,9 @@
     loadModelsButton.textContent = 'Load Models';
   }
 
-  function updateModelCatalogHint(provider) {
-    modelCatalogStatus.textContent = provider === 'anthropic'
-      ? 'Load available Claude models to auto-select the newest active model when this field is empty. You can also choose another model or enter any model ID.'
-      : 'Optional — leave blank and click Save Model to auto-load all available models for this provider, or load/enter a specific model ID.';
+  function updateModelCatalogHint() {
+    modelCatalogStatus.textContent =
+      'Optional — leave blank and click Save Model to auto-load all available models for this provider, or load/enter a specific model ID.';
   }
 
   function updateModelIdPlaceholder(provider) {

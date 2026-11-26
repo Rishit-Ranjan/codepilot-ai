@@ -200,6 +200,52 @@ class SidebarProvider {
           await this._testModel(msg.role, msg.modelId);
           break;
 
+        // Picker-specific model list fetch (for the top-bar model dropdown)
+        case 'listPickerModels': {
+          const pickerProvider = String(msg.provider || '');
+          const profile = this._config.getActiveProfile();
+          const pickerModel = profile.models.find(
+            (m) => m.provider === pickerProvider && m.roles && m.roles.includes('chat')
+          );
+          if (!pickerModel) {
+            this.postMessage({
+              type: 'pickerModelsListed',
+              requestId: msg.requestId,
+              provider: pickerProvider,
+              error: 'No configured model found for this provider.'
+            });
+            break;
+          }
+          try {
+            const models = await this._llm.listModels(
+              {
+                title: pickerModel.title || pickerProvider,
+                provider: pickerProvider,
+                apiBase: String(pickerModel.apiBase || ''),
+                requiresApiKey: pickerProvider !== 'ollama',
+                secretKeyId: pickerModel.secretKeyId
+              },
+              '',
+              'chat'
+            );
+            this.postMessage({
+              type: 'pickerModelsListed',
+              requestId: msg.requestId,
+              provider: pickerProvider,
+              modelId: pickerModel.id,
+              models
+            });
+          } catch (err) {
+            this.postMessage({
+              type: 'pickerModelsListed',
+              requestId: msg.requestId,
+              provider: pickerProvider,
+              error: err.message || 'Unable to load models.'
+            });
+          }
+          break;
+        }
+
         case 'listModels': {
           const provider = String(msg.provider || '');
           const allowedProviders = [

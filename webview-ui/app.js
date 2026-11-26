@@ -18,6 +18,12 @@
   let inlineMentionActive = false;
   let inlineMentionStart = -1;
 
+  // Cache for live-fetched model lists in the picker (keyed by provider slug)
+  // { [provider]: { ts: Date.now(), models: [{id, label}] } }
+  const pickerModelsCache = {};
+  let pickerModelsFetchId = 0;
+  const PICKER_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
   const PROVIDER_DEFAULTS = {
     openai: { base: 'https://api.openai.com/v1', needsKey: true },
     anthropic: { base: 'https://api.anthropic.com/v1', needsKey: true },
@@ -792,6 +798,19 @@
     anthropic: ['claude-sonnet-4-5', 'claude-opus-4-1', 'claude-haiku-4-5']
   };
 
+  /**
+   * For each cloud provider in chatModels that has an API key stored,
+   * fire a background listPickerModels request if the cache is missing or stale.
+   * Responses come back as 'pickerModelsListed' and trigger renderTopControls().
+   */
+  function fetchPickerModels(provKey) {
+    const cached = pickerModelsCache[provKey];
+    if (cached && (Date.now() - cached.ts) < PICKER_CACHE_TTL_MS) return;
+    const reqId = ++pickerModelsFetchId;
+    pickerModelsCache[provKey] = { ts: 0, models: null, reqId }; // mark in-flight
+    vscode.postMessage({ type: 'listPickerModels', requestId: reqId, provider: provKey });
+  }
+
   function getGroupedModelEntries(chatModels) {
     const groups = new Map();
 
@@ -808,14 +827,25 @@
         });
       }
 
-      const defaults = !m.model ? (DEFAULT_MODELS_BY_PROVIDER[provKey] || []) : [];
+      // Try live-fetched models first, fall back to hardcoded defaults
+      const liveEntry = pickerModelsCache[provKey];
+      const liveModels = liveEntry?.models; // null = in-flight, array = done
+      const defaults = !m.model
+        ? (Array.isArray(liveModels) && liveModels.length > 0
+            ? liveModels.map((lm) => lm.id)
+            : (DEFAULT_MODELS_BY_PROVIDER[provKey] || []))
+        : [];
+
       if (defaults.length > 0) {
         for (const slug of defaults) {
+          const liveLabel = Array.isArray(liveModels)
+            ? (liveModels.find((lm) => lm.id === slug)?.label || slug)
+            : slug;
           groups.get(provKey).items.push({
             id: m.id,
             modelSlug: slug,
-            title: slug,
-            subtitle: m.title || provKey,
+            title: liveLabel,
+            subtitle: liveEntry?.models === null ? `${m.title || provKey} · loading…` : (m.title || provKey),
             isActive: m.id === appState?.config?.profile?.roles?.chat && m.model === slug,
             needsKey: Boolean(m.requiresApiKey && !m.hasApiKey)
           });
@@ -1851,6 +1881,22 @@
               `${models.length} model${models.length === 1 ? '' : 's'} loaded. Choose one from the list or enter any model ID.`;
           }
         }
+        break;
+      }
+
+      case 'pickerModelsListed': {
+        const prov = msg.provider;
+        if (!prov) break;
+        if (msg.error || !Array.isArray(msg.models)) {
+          // On error keep existing cache (or mark done so we don't loop forever)
+          if (pickerModelsCache[prov] && pickerModelsCache[prov].models === null) {
+            pickerModelsCache[prov].models = []; // mark done (empty = fallback to defaults)
+          }
+          break;
+        }
+        pickerModelsCache[prov] = { ts: Date.now(), models: msg.models };
+        // Re-render top controls so the picker list reflects live models
+        renderTopControls();
         break;
       }
 

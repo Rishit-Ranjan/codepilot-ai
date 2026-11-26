@@ -199,12 +199,44 @@ function createDefaultConfigProfile(id = 'main', name = 'Main Config') {
   };
 }
 
+// Map of deprecated/removed model slugs → current replacement slug, per provider.
+// Add new entries here whenever a provider retires a model name.
+const DEPRECATED_MODEL_SLUGS = {
+  gemini: {
+    'gemini-2.5-flash': 'gemini-3.8-flash',
+    'gemini-2.5-pro': 'gemini-3.8-flash',
+    'gemini-2.0-flash': 'gemini-3.8-flash',
+    'gemini-1.5-flash': 'gemini-3.8-flash',
+    'gemini-1.5-pro': 'gemini-3.8-flash',
+    'gemini-1.0-pro': 'gemini-3.8-flash'
+  },
+  openai: {
+    'gpt-4': 'gpt-4.1',
+    'gpt-4-turbo': 'gpt-4.1',
+    'gpt-3.5-turbo': 'gpt-4.1-mini'
+  },
+  anthropic: {
+    'claude-3-opus-20240229': 'claude-opus-4-1',
+    'claude-3-sonnet-20240229': 'claude-sonnet-4-5',
+    'claude-3-haiku-20240307': 'claude-haiku-4-5',
+    'claude-3-5-sonnet-20241022': 'claude-sonnet-4-5',
+    'claude-3-5-haiku-20241022': 'claude-haiku-4-5'
+  }
+};
+
 function sanitizeModel(model) {
   const copy = { ...model };
   // Strict security invariant: NEVER persist plain-text apiKey in config
   delete copy.apiKey;
   if (!copy.secretKeyId) {
     copy.secretKeyId = SecretManager.buildKeyId(copy.id);
+  }
+  // Migrate deprecated model slugs to their current replacement
+  if (copy.model && copy.provider) {
+    const providerMap = DEPRECATED_MODEL_SLUGS[String(copy.provider).toLowerCase()];
+    if (providerMap && providerMap[copy.model]) {
+      copy.model = providerMap[copy.model];
+    }
   }
   return copy;
 }

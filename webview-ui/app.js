@@ -1706,6 +1706,9 @@
     const isPwd = input.type === 'password';
     input.type = isPwd ? 'text' : 'password';
     e.target.textContent = isPwd ? 'Hide' : 'Show';
+    if (isPwd && !input.value && modelModalExisting?.id && modelModalExisting?.hasApiKey) {
+      vscode.postMessage({ type: 'revealApiKey', modelId: modelModalExisting.id });
+    }
   });
 
   const closeModelModal = () => {
@@ -1945,6 +1948,15 @@
               `${models.length} model${models.length === 1 ? '' : 's'} loaded. Choose one from the list or enter any model ID. 
               You can also just click "Save Model" below to load all the available models for the provider.`;
           }
+        }
+        break;
+      }
+
+      case 'apiKeyRevealed': {
+        if (modalModel.classList.contains('hidden') || modelModalExisting?.id !== msg.modelId) break;
+        const input = document.getElementById('field-model-apikey');
+        if (input && !input.value && msg.apiKey) {
+          input.value = msg.apiKey;
         }
         break;
       }

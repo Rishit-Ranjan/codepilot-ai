@@ -200,6 +200,20 @@ class SidebarProvider {
           await this._testModel(msg.role, msg.modelId);
           break;
 
+        case 'revealApiKey': {
+          const profile = this._config.getActiveProfile();
+          const target = profile.models.find((m) => m.id === msg.modelId);
+          const apiKey = target?.secretKeyId
+            ? (await this._secrets.getApiKey(target.secretKeyId)) || ''
+            : '';
+          this.postMessage({
+            type: 'apiKeyRevealed',
+            modelId: msg.modelId,
+            apiKey
+          });
+          break;
+        }
+
         // Picker-specific model list fetch (for the top-bar model dropdown)
         case 'listPickerModels': {
           const pickerProvider = String(msg.provider || '');

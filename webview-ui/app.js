@@ -1726,9 +1726,12 @@
       const value = document.getElementById(id).value.trim();
       return value === '' ? undefined : Number(value);
     };
+    const providerSelectEl = document.getElementById('field-model-provider');
+    const providerLabel = providerSelectEl?.options[providerSelectEl.selectedIndex]?.text || provider;
+    const rawTitle = document.getElementById('field-model-title').value.trim();
     const model = {
       id: document.getElementById('field-model-id').value || undefined,
-      title: document.getElementById('field-model-title').value.trim(),
+      title: rawTitle || providerLabel,
       provider,
       model: document.getElementById('field-model-slug').value.trim(),
       apiBase: document.getElementById('field-model-base').value.trim(),
@@ -1746,6 +1749,7 @@
       }
     };
     const apiKey = document.getElementById('field-model-apikey').value;
+    delete pickerModelsCache[provider.toLowerCase()];
     vscode.postMessage({ type: 'saveModel', model, apiKey });
     closeModelModal();
   });

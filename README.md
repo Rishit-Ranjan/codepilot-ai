@@ -1,5 +1,8 @@
 # CodePilot Coder
 
+<img width="1871" height="936" alt="image" src="https://github.com/user-attachments/assets/b67ff04d-ea74-446d-a88d-1d5678c67619" />
+
+
 CodePilot Coder is a privacy-first AI coding assistant for Visual Studio Code. It combines workspace-aware chat, planning, agent tools, inline editing, and code autocomplete in a single sidebar.
 
 Built with JavaScript and the VS Code Extension API, it supports local Ollama models and popular cloud providers while keeping API keys in VS Code `SecretStorage`.

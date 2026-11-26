@@ -293,8 +293,38 @@
     e.stopPropagation();
     const isHidden = menuModel.classList.contains('hidden');
     closeAllPopovers();
-    if (isHidden) menuModel.classList.remove('hidden');
+    if (isHidden) {
+      menuModel.classList.remove('hidden');
+      const searchEl = document.getElementById('model-picker-search');
+      if (searchEl) {
+        searchEl.value = '';
+        renderModelPickerList();
+        setTimeout(() => searchEl.focus(), 0);
+      }
+    }
   });
+
+  const modelPickerSearchEl = document.getElementById('model-picker-search');
+  if (modelPickerSearchEl) {
+    modelPickerSearchEl.addEventListener('input', () => {
+      renderModelPickerList();
+    });
+    modelPickerSearchEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (modelPickerSearchEl.value) {
+          modelPickerSearchEl.value = '';
+          renderModelPickerList();
+        } else {
+          closeAllPopovers();
+        }
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const firstBtn = document.querySelector('#model-picker-list button[data-pick-model]');
+        if (firstBtn) firstBtn.click();
+      }
+    });
+  }
 
   btnSkillsPicker.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -876,6 +906,63 @@
     return Array.from(groups.values()).filter((g) => g.items.length > 0);
   }
 
+  function renderModelPickerList() {
+    if (!appState?.config?.profile) return;
+    const chatModels = appState.config.profile.models.filter((m) => m.roles.includes('chat'));
+    const modelListEl = document.getElementById('model-picker-list');
+    const query = (document.getElementById('model-picker-search')?.value || '').trim().toLowerCase();
+    const groupedModels = getGroupedModelEntries(chatModels)
+      .map((group) => {
+        if (!query || group.label.toLowerCase().includes(query)) return group;
+        const filteredItems = group.items.filter(
+          (item) =>
+            item.title.toLowerCase().includes(query) ||
+            item.modelSlug.toLowerCase().includes(query) ||
+            item.subtitle.toLowerCase().includes(query)
+        );
+        return { ...group, items: filteredItems };
+      })
+      .filter((group) => group.items.length > 0);
+
+    modelListEl.innerHTML = groupedModels.length
+      ? groupedModels
+          .map(
+            (group) => `
+      <div class="cp-popover-section">
+        <div class="cp-popover-section-title">${escapeHtml(group.label)}</div>
+        ${group.items
+          .map(
+            (item) => `
+          <button
+            class="cp-menu-item ${item.isActive ? 'active' : ''}"
+            data-pick-model="${escapeHtml(item.id)}"
+            data-pick-slug="${escapeHtml(item.modelSlug)}"
+          >
+            <span>${escapeHtml(item.title)}</span>
+            <span class="cp-muted">${escapeHtml(item.subtitle)}</span>
+          </button>
+        `
+          )
+          .join('')}
+      </div>
+    `
+          )
+          .join('')
+      : '<div class="cp-menu-item cp-muted" style="cursor:default">No matching models</div>';
+
+    modelListEl.querySelectorAll('button[data-pick-model]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        vscode.postMessage({
+          type: 'setRoleModel',
+          role: 'chat',
+          modelId: btn.dataset.pickModel,
+          modelSlug: btn.dataset.pickSlug || undefined
+        });
+        closeAllPopovers();
+      });
+    });
+  }
+
   function renderTopControls() {
     if (!appState) return;
     const { mode, config, sessions } = appState;
@@ -912,45 +999,7 @@
       : 'Select Model';
 
     // Model picker list (grouped by provider sections)
-    const chatModels = profile.models.filter((m) => m.roles.includes('chat'));
-    const modelListEl = document.getElementById('model-picker-list');
-    const groupedModels = getGroupedModelEntries(chatModels);
-
-    modelListEl.innerHTML = groupedModels
-      .map(
-        (group) => `
-      <div class="cp-popover-section">
-        <div class="cp-popover-section-title">${escapeHtml(group.label)}</div>
-        ${group.items
-          .map(
-            (item) => `
-          <button
-            class="cp-menu-item ${item.isActive ? 'active' : ''}"
-            data-pick-model="${escapeHtml(item.id)}"
-            data-pick-slug="${escapeHtml(item.modelSlug)}"
-          >
-            <span>${escapeHtml(item.title)}</span>
-            <span class="cp-muted">${escapeHtml(item.subtitle)}</span>
-          </button>
-        `
-          )
-          .join('')}
-      </div>
-    `
-      )
-      .join('');
-
-    modelListEl.querySelectorAll('button[data-pick-model]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        vscode.postMessage({
-          type: 'setRoleModel',
-          role: 'chat',
-          modelId: btn.dataset.pickModel,
-          modelSlug: btn.dataset.pickSlug || undefined
-        });
-        closeAllPopovers();
-      });
-    });
+    renderModelPickerList();
 
     // Skill picker
     const skills = (profile.skills || []).filter((skill) => skill.enabled);

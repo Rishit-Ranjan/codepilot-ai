@@ -1,7 +1,7 @@
 # CodePilot Coder
 
 <img width="1871" height="936" alt="image" src="https://github.com/user-attachments/assets/b67ff04d-ea74-446d-a88d-1d5678c67619" /></br></br>
-<img width="660" height="940" alt="image" src="https://github.com/user-attachments/assets/37027e7d-34e2-4db1-a92a-66d8193a2f8d" />
+<img width="650" height="930" alt="image" src="https://github.com/user-attachments/assets/37027e7d-34e2-4db1-a92a-66d8193a2f8d" />
 
 
 CodePilot Coder is a privacy-first AI coding assistant for Visual Studio Code. It combines workspace-aware chat, planning, agent tools, inline editing, and code autocomplete in a single sidebar.

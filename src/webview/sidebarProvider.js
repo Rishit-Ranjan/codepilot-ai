@@ -192,7 +192,7 @@ class SidebarProvider {
           break;
 
         case 'setRoleModel':
-          await this._config.setRoleModel(msg.role, msg.modelId);
+          await this._config.setRoleModel(msg.role, msg.modelId, msg.modelSlug);
           await this.pushFullState();
           break;
 

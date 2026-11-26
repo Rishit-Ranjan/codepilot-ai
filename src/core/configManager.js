@@ -557,11 +557,17 @@ class ConfigManager {
     await this._save();
   }
 
-  async setRoleModel(role, modelId) {
+  async setRoleModel(role, modelId, modelSlug) {
     if (!MODEL_ROLES.includes(role)) throw new Error(`Unknown model role "${role}".`);
     const profile = this.getActiveProfile();
     if (modelId && !this._getModelOptions(profile, role).some((model) => model.id === modelId)) {
       throw new Error(`The selected model is not available for the ${role} role.`);
+    }
+    if (modelId && modelSlug) {
+      const target = profile.models.find((m) => m.id === modelId);
+      if (target) {
+        target.model = String(modelSlug).trim();
+      }
     }
     profile.roles[role] = modelId || '';
     await this._save();

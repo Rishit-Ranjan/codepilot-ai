@@ -1042,7 +1042,14 @@
                 <span>${escapeHtml(s.title)}</span>
                 <span class="cp-muted">${s.messageCount} msgs</span>
               </button>
-              <button class="cp-icon-btn" data-del-session="${escapeHtml(s.id)}" title="Delete">&times;</button>
+              <button class="cp-icon-btn" data-del-session="${escapeHtml(s.id)}" title="Delete session" aria-label="Delete session">
+                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M2.5 4.5h11"/>
+                  <path d="M6 4.5V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5"/>
+                  <path d="M4 4.5l.7 8.5a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9l.7-8.5"/>
+                  <path d="M6.75 7.25v4M9.25 7.25v4"/>
+                </svg>
+              </button>
             </div>
           `
             )
@@ -1056,7 +1063,8 @@
       });
     });
     historyList.querySelectorAll('button[data-del-session]').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         vscode.postMessage({ type: 'deleteSession', sessionId: btn.dataset.delSession });
       });
     });
